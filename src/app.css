@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+@plugin "daisyui";
+@plugin "@tailwindcss/typography";
+
+html {
+	@apply bg-base-200;
+	overscroll-behavior-y: none;
+}
+
+body {
+	@apply bg-base-200;
+	font-family: 'Geist Variable', sans-serif;
+}
