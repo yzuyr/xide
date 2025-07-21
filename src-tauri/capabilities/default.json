@@ -10,6 +10,7 @@
 		"dialog:default",
 		"fs:default",
 		"fs:allow-home-meta-recursive",
+		"fs:allow-home-write-recursive",
 		{
 			"identifier": "fs:scope",
 			"allow": [

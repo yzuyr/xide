@@ -22,6 +22,13 @@
 		}
 	});
 
+	$effect(() => {
+		document.documentElement.setAttribute(
+			'data-theme',
+			appStore.theme
+		);
+	})
+
 	onMount(() => {
 		window = getCurrentWindow();
 		window.theme().then((theme) => {
