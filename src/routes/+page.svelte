@@ -14,8 +14,13 @@
 		return goto(`/rows/${tab?.rowId}`);
 	}
 
+	function addTabToRow(rowId: string) {
+		workspaceStore.setCurrentRowId(rowId);
+		appStore.setCommandMenuOpen(true);
+	}
+
 	$effect(() => {
-		if (workspaceStore.rootDir && workspaceStore.rows.flatMap((row) => row.tabs).length === 0) {
+		if (workspaceStore.rootDir && workspaceStore.rows.flatMap((row) => row.tabIds).length === 0) {
 			appStore.setCommandMenuOpen(true);
 		}
 	});
@@ -51,17 +56,20 @@
 						<span class="group-hover:hidden">{rowIndex}</span>
 						<XIcon class="hidden group-hover:flex" />
 					</button>
-					{#each row.tabs as tab, tabIndex}
-						{@const fileName = tab.filePath.split('/').pop()}
-						<button onclick={() => navigateToTab(tab.id)} class="btn w-32 h-20">
-							<span class="text-sm truncate">{fileName}</span></button
-						>
+					{#each row.tabIds as tabId}
+						{@const tab = workspaceStore.findTabById(tabId)}
+						{#if tab}
+							{@const fileName = tab.filePath.split('/').pop()}
+							<button onclick={() => navigateToTab(tab.id)} class="btn w-32 h-20">
+								<span class="text-sm truncate">{fileName}</span></button
+							>
+						{/if}
 					{/each}
 					<button
-						onclick={() => appStore.toggleCommandMenu()}
+						onclick={() => addTabToRow(row.id)}
 						class={clsx(
 							'btn w-32 h-20 group-hover:opacity-100',
-							row.tabs.length === 0 ? 'opacity-100' : 'opacity-0'
+							row.tabIds.length === 0 ? 'opacity-100' : 'opacity-0'
 						)}
 					>
 						<PlusIcon /></button

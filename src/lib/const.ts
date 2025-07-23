@@ -140,6 +140,7 @@ export const EXTENSION_TO_LANG: Record<string, string> = {
 export const SHIKI_LANGUAGES = Object.values(EXTENSION_TO_LANG);
 
 export const BASE_IGNORE_LIST = dedent`
+.DS_Store
 .git
 .husky
 node_modules
@@ -150,3 +151,68 @@ node_modules
 .astro
 target
 `;
+
+export const SHIKI_THEMES = [
+	// Light themes
+	'catppuccin-latte',
+	'everforest-light',
+	'github-light',
+	'github-light-default',
+	'github-light-high-contrast',
+	'gruvbox-light-hard',
+	'gruvbox-light-medium',
+	'gruvbox-light-soft',
+	'kanagawa-lotus',
+	'light-plus',
+	'material-theme-lighter',
+	'min-light',
+	'one-light',
+	'rose-pine-dawn',
+	'slack-ochin',
+	'snazzy-light',
+	'solarized-light',
+	'vitesse-light',
+	// Dark themes
+	'andromeeda',
+	'aurora-x',
+	'ayu-dark',
+	'catppuccin-frappe',
+	'catppuccin-macchiato',
+	'catppuccin-mocha',
+	'dark-plus',
+	'dracula',
+	'dracula-soft',
+	'everforest-dark',
+	'github-dark',
+	'github-dark-default',
+	'github-dark-dimmed',
+	'github-dark-high-contrast',
+	'gruvbox-dark-hard',
+	'gruvbox-dark-medium',
+	'gruvbox-dark-soft',
+	'houston',
+	'kanagawa-dragon',
+	'kanagawa-wave',
+	'laserwave',
+	'material-theme',
+	'material-theme-darker',
+	'material-theme-ocean',
+	'material-theme-palenight',
+	'min-dark',
+	'monokai',
+	'night-owl',
+	'nord',
+	'one-dark-pro',
+	'plastic',
+	'poimandres',
+	'red',
+	'rose-pine',
+	'rose-pine-moon',
+	'slack-dark',
+	'solarized-dark',
+	'synthwave-84',
+	'tokyo-night',
+	'vesper',
+	'vitesse-black',
+	'vitesse-dark'
+];

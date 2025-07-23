@@ -9,13 +9,27 @@
 		MessageCircleIcon
 	} from 'lucide-svelte';
 	import clsx from 'clsx';
+	import { configStore } from '$lib/store/config.svelte';
+	import { emit } from '@tauri-apps/api/event';
 
 	const rowIndex = $derived(
-		workspaceStore.rows.findIndex((row) => row.id === workspaceStore.currentRowId)
+		workspaceStore.currentRowId
+			? workspaceStore.rows.findIndex((row) => row.id === workspaceStore.currentRowId)
+			: -1
 	);
 	const tabIndex = $derived(
-		workspaceStore.rows[rowIndex].tabs.findIndex((tab) => tab.id === workspaceStore.currentTabId)
+		rowIndex >= 0 && workspaceStore.currentTabId
+			? workspaceStore.rows[rowIndex].tabIds.findIndex(
+					(tabId) => tabId === workspaceStore.currentTabId
+				)
+			: -1
 	);
+
+	async function reloadEditor() {
+		await configStore.restore();
+		await emit('reload-editor');
+		appStore.setConfigDirty(false);
+	}
 </script>
 
 <div
@@ -26,16 +40,20 @@
 		<div class="flex gap-1">
 			<button
 				class="btn btn-ghost btn-square btn-xs"
-				onclick={() => workspaceStore.prevTab({ tabId: workspaceStore.currentTabId })}
+				onclick={() =>
+					workspaceStore.currentTabId &&
+					workspaceStore.prevTab({ tabId: workspaceStore.currentTabId })}
 			>
 				<ChevronLeftIcon size={16} />
 			</button>
 			<a href="/" class="btn btn-xs">
-				{rowIndex}/{tabIndex}
+				{rowIndex >= 0 ? rowIndex : '?'}/{tabIndex >= 0 ? tabIndex : '?'}
 			</a>
 			<button
 				class="btn btn-ghost btn-square btn-xs"
-				onclick={() => workspaceStore.nextTab({ tabId: workspaceStore.currentTabId })}
+				onclick={() =>
+					workspaceStore.currentTabId &&
+					workspaceStore.nextTab({ tabId: workspaceStore.currentTabId })}
 			>
 				<ChevronRightIcon size={16} />
 			</button>
@@ -44,6 +62,9 @@
 		<div></div>
 	{/if}
 	<div class="flex gap-1">
+		{#if appStore.configDirty}
+			<button class="btn btn-xs" onclick={reloadEditor}>Reload Editor</button>
+		{/if}
 		<button class="btn btn-xs btn-square btn-ghost" onclick={() => appStore.toggleCommandMenu()}
 			><SearchIcon size={16} /></button
 		>

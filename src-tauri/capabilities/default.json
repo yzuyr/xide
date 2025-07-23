@@ -1,25 +1,31 @@
 {
-	"$schema": "../gen/schemas/desktop-schema.json",
-	"identifier": "default",
-	"description": "Capability for the main window",
-	"windows": ["main"],
-	"permissions": [
-		"core:default",
-		"core:window:allow-start-dragging",
-		"opener:default",
-		"dialog:default",
-		"fs:default",
-		"fs:allow-home-meta-recursive",
-		"fs:allow-home-write-recursive",
-		{
-			"identifier": "fs:scope",
-			"allow": [
-				{
-					"path": "$HOME/**/*"
-				}
-			]
-		},
-		"opener:default",
-		"store:default"
-	]
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "opener:default",
+    "dialog:default",
+    "fs:default",
+    "fs:allow-home-meta-recursive",
+    "fs:allow-watch",
+    "fs:allow-unwatch",
+    "fs:allow-home-write-recursive",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {
+          "path": "$HOME/**/*"
+        }
+      ]
+    },
+    "opener:default",
+    "store:default",
+    "clipboard-manager:default",
+    "clipboard-manager:allow-write-text"
+  ]
 }

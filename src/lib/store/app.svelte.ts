@@ -4,6 +4,7 @@ class AppStore {
 	theme = $state<Theme>('light');
 	commandMenuOpen = $state(false);
 	currentCommandIndex = $state(0);
+	configDirty = $state(false);
 
 	setCommandMenuOpen(open: boolean) {
 		this.commandMenuOpen = open;
@@ -15,6 +16,10 @@ class AppStore {
 
 	setCurrentCommandIndex(index: number) {
 		this.currentCommandIndex = index;
+	}
+
+	setConfigDirty(dirty: boolean) {
+		this.configDirty = dirty;
 	}
 }
 

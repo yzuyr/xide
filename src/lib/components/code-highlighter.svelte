@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { appStore } from '$lib/store/app.svelte';
+	import { configStore } from '$lib/store/config.svelte';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { type Highlighter } from 'shiki';
 
@@ -16,7 +17,10 @@
 	async function highlightCode() {
 		return highlighter?.codeToHtml(code, {
 			lang: 'javascript',
-			theme: appStore.theme === 'dark' ? 'houston' : 'min-light'
+			theme:
+				appStore.theme === 'dark'
+					? configStore.config.editor.dark_theme
+					: configStore.config.editor.light_theme
 		});
 	}
 </script>

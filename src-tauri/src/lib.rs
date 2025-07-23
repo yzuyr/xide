@@ -1,8 +1,8 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-use std::process::{Command, Stdio};
-use std::io::{BufRead, BufReader};
-use tauri::ipc::Channel;
 use serde::Serialize;
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
+use tauri::ipc::Channel;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase", tag = "event", content = "data")]
@@ -14,18 +14,28 @@ enum AgentEvent {
 }
 
 #[tauri::command]
-async fn run_agent(model: String, prompt: String, on_event: Channel<AgentEvent>) -> Result<(), String> {
+async fn run_agent(
+    model: String,
+    prompt: String,
+    cwd: String,
+    on_event: Channel<AgentEvent>,
+) -> Result<(), String> {
     let mut child = Command::new("opencode")
         .arg("run")
         .arg("-m")
         .arg(&model)
         .arg(&prompt)
+        .current_dir(&cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| {
             let error_msg = format!("Failed to execute command: {}", e);
-            on_event.send(AgentEvent::Error { message: error_msg.clone() }).ok();
+            on_event
+                .send(AgentEvent::Error {
+                    message: error_msg.clone(),
+                })
+                .ok();
             error_msg
         })?;
 
@@ -69,9 +79,15 @@ async fn run_agent(model: String, prompt: String, on_event: Channel<AgentEvent>)
     let _ = tokio::join!(stdout_handle, stderr_handle);
 
     // Wait for the process to finish
-    let status = child.wait().map_err(|e| format!("Failed to wait for process: {}", e))?;
+    let status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for process: {}", e))?;
 
-    on_event.send(AgentEvent::Finished { success: status.success() }).ok();
+    on_event
+        .send(AgentEvent::Finished {
+            success: status.success(),
+        })
+        .ok();
 
     Ok(())
 }
@@ -79,6 +95,7 @@ async fn run_agent(model: String, prompt: String, on_event: Channel<AgentEvent>)
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())

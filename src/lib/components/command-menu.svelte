@@ -9,12 +9,13 @@
 	import { match } from 'ts-pattern';
 	import CodeHighlighter from './code-highlighter.svelte';
 	import { join } from '@tauri-apps/api/path';
-	import { readTextFile, stat } from '@tauri-apps/plugin-fs';
+	import { exists, mkdir, readTextFile, stat, writeTextFile } from '@tauri-apps/plugin-fs';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { createHighlighter } from 'shiki';
 	import { onDestroy } from 'svelte';
-	import { SHIKI_LANGUAGES } from '$lib/const';
+	import { SHIKI_LANGUAGES, SHIKI_THEMES } from '$lib/const';
 	import { goto } from '$app/navigation';
+	import { getConfigPath } from '$lib/store/config.svelte';
 
 	let inputElement = $state<HTMLInputElement>();
 
@@ -53,6 +54,12 @@
 		})
 	);
 
+	const metaCommands: ExecutableCommand[] = $derived(
+		$data.query && !workspaceStore.fileList.includes($data.query)
+			? [{ label: 'Create File', value: 'create_file', type: 'command' }]
+			: []
+	);
+
 	const combinedCommands: ExecutableCommand[] = $derived([...fileCommands, ...BASE_COMMANDS]);
 
 	const filteredCommands: ExecutableCommand[] = $derived(
@@ -63,7 +70,9 @@
 			: combinedCommands
 	);
 
-	const activeCommand = $derived(filteredCommands[appStore.currentCommandIndex]);
+	const allCommands: ExecutableCommand[] = $derived([...metaCommands, ...filteredCommands]);
+
+	const activeCommand = $derived(allCommands[appStore.currentCommandIndex]);
 
 	async function executeCommand(command: ExecutableCommand) {
 		return match(command)
@@ -76,12 +85,32 @@
 				appStore.setCommandMenuOpen(false);
 				return goto(`/rows/${workspaceStore.currentRowId}?tabId=${tabId}`);
 			})
+			.with({ type: 'command' }, async ({ value }) => {
+				if (value === 'create_file') {
+					if (!workspaceStore.rootDir) return;
+					if (!workspaceStore.currentRowId) return;
+					const path = await join(workspaceStore.rootDir, $data.query);
+					const pathDirectory = path.split('/').slice(0, -1).join('/');
+					const directoryExists = await exists(pathDirectory);
+					if (!directoryExists) {
+						await mkdir(pathDirectory, { recursive: true });
+					}
+					await writeTextFile(path, '');
+					const tabId = workspaceStore.addTab({
+						rowId: workspaceStore.currentRowId,
+						filePath: $data.query
+					});
+					appStore.setCommandMenuOpen(false);
+					workspaceStore.setCurrentTabId(tabId);
+					return goto(`/rows/${workspaceStore.currentRowId}`);
+				}
+			})
 			.otherwise(() => {});
 	}
 
 	async function buildHighligher() {
 		return createHighlighter({
-			themes: ['houston', 'min-light'],
+			themes: SHIKI_THEMES,
 			langs: SHIKI_LANGUAGES
 		});
 	}
@@ -93,7 +122,6 @@
 				const fullPath = await join(workspaceStore.rootDir, value);
 				try {
 					const meta = await stat(fullPath);
-					console.log('>>>META', meta);
 					if (meta.size > 20000) {
 						return 'File is too large to display';
 					}
@@ -141,8 +169,8 @@
 				block: 'nearest'
 			});
 		}
-		appStore.setCurrentCommandIndex(filteredCommands.length - 1);
-		return getElementByIndex(filteredCommands.length - 1)?.scrollIntoView({
+		appStore.setCurrentCommandIndex(allCommands.length - 1);
+		return getElementByIndex(allCommands.length - 1)?.scrollIntoView({
 			behavior: 'smooth',
 			block: 'nearest'
 		});
@@ -150,7 +178,7 @@
 
 	function commandDown() {
 		const newIndex = appStore.currentCommandIndex + 1;
-		if (newIndex < filteredCommands.length) {
+		if (newIndex < allCommands.length) {
 			appStore.setCurrentCommandIndex(newIndex);
 			return getElementByIndex(newIndex)?.scrollIntoView({
 				behavior: 'smooth',
@@ -219,7 +247,7 @@
 				</label>
 				<div class="flex-1 overflow-y-auto">
 					<ul class="menu w-full">
-						{#each filteredCommands as command, index}
+						{#each allCommands as command, index}
 							<li>
 								<button
 									data-command-index={index}
@@ -228,7 +256,7 @@
 										appStore.currentCommandIndex === index && 'menu-active'
 									)}
 									onclick={(event) => event.detail !== 0 && executeCommand(command)}
-									><span dir="rtl" class="truncate">{command.label}</span></button
+									><span class="truncate">{command.label}</span></button
 								>
 							</li>
 						{/each}

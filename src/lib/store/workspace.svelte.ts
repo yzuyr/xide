@@ -1,10 +1,11 @@
 import { goto } from '$app/navigation';
 import { BASE_IGNORE_LIST } from '$lib/const';
 import { emit } from '@tauri-apps/api/event';
-import { join, homeDir } from '@tauri-apps/api/path';
+import { join } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
 import fastIgnore from 'fast-ignore';
+import { getConfigPath } from './config.svelte';
 
 export type Tab = {
 	id: string;
@@ -15,13 +16,14 @@ export type Tab = {
 
 export type Row = {
 	id: string;
-	tabs: Tab[];
+	tabIds: string[];
 };
 
 class WorkspaceStore {
 	rootDir = $state<string>();
 	currentTabId = $state<string>();
 	currentRowId = $state<string>();
+	tabs = $state<Map<string, Tab>>(new Map());
 	rows = $state<Row[]>([]);
 	fileList = $state<string[]>([]);
 	chatVisible = $state<boolean>(false);
@@ -62,11 +64,11 @@ class WorkspaceStore {
 	}
 
 	findTabByPath(filePath: string) {
-		return this.rows.flatMap((row) => row.tabs).find((tab) => tab.filePath === filePath);
+		return [...this.tabs.values()].find((tab) => tab.filePath === filePath);
 	}
 
 	findTabById(id: string) {
-		return this.rows.flatMap((row) => row.tabs).find((tab) => tab.id === id);
+		return this.tabs.get(id);
 	}
 
 	removeRow(rowId: string) {
@@ -74,7 +76,7 @@ class WorkspaceStore {
 	}
 
 	addRow() {
-		this.rows.push({ id: crypto.randomUUID(), tabs: [] });
+		this.rows.push({ id: crypto.randomUUID(), tabIds: [] });
 		return this.rows[this.rows.length - 1];
 	}
 
@@ -88,8 +90,18 @@ class WorkspaceStore {
 		external?: boolean;
 	}) {
 		const id = crypto.randomUUID();
-		const rowIndex = this.rows.findIndex((row) => row.id === rowId);
-		this.rows[rowIndex].tabs.push({ id, rowId, filePath, external });
+		let rowIndex = this.rows.findIndex((row) => row.id === rowId);
+
+		// If row doesn't exist, create a new one
+		if (rowIndex === -1) {
+			const newRow = this.addRow();
+			rowId = newRow.id;
+			rowIndex = this.rows.length - 1;
+			this.setCurrentRowId(rowId);
+		}
+
+		this.rows[rowIndex].tabIds.push(id);
+		this.tabs.set(id, { id, rowId, filePath, external });
 		this.currentTabId = id;
 		return id;
 	}
@@ -99,10 +111,25 @@ class WorkspaceStore {
 		if (!tab?.rowId) return;
 		const rowIndex = this.rows.findIndex((row) => row.id === tab?.rowId);
 		if (rowIndex === -1) return;
-		console.log('>>>REMOVE TAB', rowIndex, this.rows[rowIndex]);
-		this.rows[rowIndex].tabs = this.rows[rowIndex].tabs.filter((tab) => tab.id !== tabId);
-		if (this.rows[rowIndex].tabs.length === 0) {
-			this.removeRow(tab?.rowId);
+		this.rows[rowIndex].tabIds = this.rows[rowIndex].tabIds.filter((id) => id !== tabId);
+		this.tabs.delete(tabId);
+		if (this.currentTabId === tabId) {
+			const remainingTabIds = this.rows[rowIndex].tabIds;
+			if (remainingTabIds.length > 0) {
+				// Switch to another tab in the same row
+				this.setCurrentTabId(remainingTabIds[0]);
+			} else {
+				// No more tabs in this row, clear currentTabId
+				this.setCurrentTabId(undefined);
+			}
+		}
+		if (this.rows[rowIndex].tabIds.length === 0) {
+			this.removeRow(tab.rowId);
+			// If no rows left, create a new one
+			if (this.rows.length === 0) {
+				const newRow = this.addRow();
+				this.setCurrentRowId(newRow.id);
+			}
 		}
 	}
 
@@ -111,12 +138,12 @@ class WorkspaceStore {
 		if (!currentTab?.rowId) return;
 		const row = this.findRowById(currentTab.rowId);
 		if (!row) return;
-		const currentTabIndex = row.tabs.findIndex((tab) => tab.id === tabId);
+		const currentTabIndex = row.tabIds.findIndex((id) => id === tabId);
 		const nextTabIndex = currentTabIndex + 1;
-		if (row.tabs.length > nextTabIndex) {
-			return emit('focus-tab', { id: row.tabs[nextTabIndex].id });
+		if (row.tabIds.length > nextTabIndex) {
+			return emit('focus-tab', { id: row.tabIds[nextTabIndex] });
 		}
-		const firstTabId = row.tabs[0].id;
+		const firstTabId = row.tabIds[0];
 		return emit('focus-tab', { id: firstTabId });
 	}
 
@@ -125,12 +152,12 @@ class WorkspaceStore {
 		if (!currentTab?.rowId) return;
 		const row = this.findRowById(currentTab.rowId);
 		if (!row) return;
-		const currentTabIndex = row.tabs.findIndex((tab) => tab.id === tabId);
+		const currentTabIndex = row.tabIds.findIndex((id) => id === tabId);
 		const prevTabIndex = currentTabIndex - 1;
 		if (prevTabIndex >= 0) {
-			return emit('focus-tab', { id: row.tabs[prevTabIndex].id });
+			return emit('focus-tab', { id: row.tabIds[prevTabIndex] });
 		}
-		const lastTabId = row.tabs[row.tabs.length - 1].id;
+		const lastTabId = row.tabIds[row.tabIds.length - 1];
 		return emit('focus-tab', { id: lastTabId });
 	}
 
@@ -140,17 +167,17 @@ class WorkspaceStore {
 		const nextRowIndex = this.rows.findIndex((row) => row.id === rowId) + 1;
 		const nextRow = this.rows[nextRowIndex];
 
-		if (nextRow?.tabs.length > 0) {
+		if (nextRow?.tabIds.length > 0) {
 			await goto(`/rows/${nextRow.id}`);
-			const firstTabId = nextRow.tabs[0].id;
+			const firstTabId = nextRow.tabIds[0];
 			this.setCurrentTabId(firstTabId);
 			return emit('focus-tab', { id: firstTabId });
 		}
 
-		if (currentRow?.tabs.length === 0) {
+		if (currentRow?.tabIds.length === 0) {
 			const firstRow = this.rows[0];
 			await goto(`/rows/${firstRow.id}`);
-			const firstTabId = firstRow.tabs[0].id;
+			const firstTabId = firstRow.tabIds[0];
 			this.setCurrentTabId(firstTabId);
 			return emit('focus-tab', { id: firstTabId });
 		}
@@ -158,13 +185,13 @@ class WorkspaceStore {
 		if (!nextRow) {
 			const newRow = this.addRow();
 			await goto(`/rows/${newRow.id}`);
-			const firstTabId = newRow.tabs[0].id;
+			const firstTabId = newRow.tabIds[0];
 			this.setCurrentTabId(firstTabId);
 			return emit('focus-tab', { id: firstTabId });
 		}
 
 		await goto(`/rows/${nextRow.id}`);
-		const firstTabId = nextRow.tabs[0].id;
+		const firstTabId = nextRow.tabIds[0];
 		this.setCurrentTabId(firstTabId);
 		return emit('focus-tab', { id: firstTabId });
 	}
@@ -176,7 +203,7 @@ class WorkspaceStore {
 		const prevRow = this.rows[prevRowIndex];
 		if (!prevRow) return;
 		await goto(`/rows/${prevRowIndex}`);
-		const firstTabId = this.rows[prevRowIndex].tabs[0].id;
+		const firstTabId = this.rows[prevRowIndex].tabIds[0];
 		this.setCurrentTabId(firstTabId);
 		return emit('focus-tab', { id: firstTabId });
 	}
@@ -191,15 +218,18 @@ class WorkspaceStore {
 	}
 
 	async openSettings() {
-		const settingsPath = await join(await homeDir(), '.config', 'crest', 'config.toml');
+		const settingsPath = await getConfigPath();
 		const settingsTab = this.findTabByPath(settingsPath);
 		if (!settingsTab) {
 			const currentRowIndex = this.rows.findIndex((row) => row.id === this.currentRowId);
-			const lastRow = this.rows[currentRowIndex];
-			this.addTab({ rowId: lastRow.id, filePath: settingsPath, external: true });
+			const lastRow = currentRowIndex >= 0 ? this.rows[currentRowIndex] : this.rows[0];
+			const tabId = this.addTab({ rowId: lastRow.id, filePath: settingsPath, external: true });
+			this.setCurrentTabId(tabId);
+			await emit('focus-tab', { id: tabId });
 			return goto(`/rows/${lastRow.id}`);
 		}
-		this.setCurrentTabId(settingsTab.rowId);
+		this.setCurrentTabId(settingsTab.id);
+		await emit('focus-tab', { id: settingsTab.id });
 		return goto(`/rows/${settingsTab.rowId}`);
 	}
 
@@ -219,6 +249,7 @@ class WorkspaceStore {
 				const relativeDir = (await join(dir, file.name))
 					.replace(this.rootDir ?? '', '')
 					.substring(1);
+				if (BASE_IGNORE_LIST.includes(file.name)) continue;
 				fileList.push(relativeDir);
 			}
 		}

@@ -6,6 +6,7 @@
 	import { marked } from 'marked';
 	import { emit, listen } from '@tauri-apps/api/event';
 	import { workspaceStore } from '$lib/store/workspace.svelte';
+	import { XIcon } from 'lucide-svelte';
 
 	let chatId = $state<string>();
 	const chat = $derived(chatsStore.chats.find((chat) => chat.id === chatId));
@@ -31,29 +32,16 @@
 			if (!chatId) return;
 			if (!chat) return;
 			const { event, data } = message;
-
 			switch (event) {
 				case 'stdout':
-					console.log('Agent output:', data.line);
 					await chatsStore.appendToMessage({
 						chatId,
 						messageId: chat.messages[messageIndex].id,
 						content: data.line
 					});
-					// Handle stdout line
 					break;
-				// case "stderr":
-				//   console.error("Agent error:", data.line);
-				//   // Handle stderr line
-				//   break;
 				case 'finished':
-					console.log('Agent finished, success:', data.success);
-					// Handle completion
 					break;
-				// case "error":
-				//   console.error("Agent error:", data.message);
-				//   // Handle error
-				//   break;
 			}
 		};
 
@@ -61,6 +49,7 @@
 			await invoke('run_agent', {
 				model,
 				prompt,
+				cwd: workspaceStore.rootDir ?? '',
 				onEvent
 			});
 		} catch (error) {
@@ -100,12 +89,15 @@
 			if (!workspaceStore.currentRowId) return;
 			const currentRow = workspaceStore.findRowById(workspaceStore.currentRowId);
 			if (!currentRow) return;
-			const lastTabIndex = currentRow.tabs.length - 1;
-			return emit(`focus-tab-${lastTabIndex}`);
+			const lastTabIndex = currentRow.tabIds.length - 1;
+			return emit('focus-tab', { id: currentRow.tabIds[lastTabIndex] });
 		}
 		if (event.key === 'l' && event.ctrlKey) {
 			event.preventDefault();
-			return emit('focus-tab-0');
+			if (!workspaceStore.currentRowId) return;
+			const currentRow = workspaceStore.findRowById(workspaceStore.currentRowId);
+			if (!currentRow) return;
+			return emit('focus-tab', { id: currentRow.tabIds[0] });
 		}
 	}
 
@@ -113,6 +105,10 @@
 		return formElement?.scrollIntoView({
 			behavior: 'smooth'
 		});
+	}
+
+	function closeChat() {
+		workspaceStore.setChatVisible(false);
 	}
 
 	onMount(() => {
@@ -137,20 +133,32 @@
 </script>
 
 <form use:form bind:this={formElement} class="flex flex-col flex-1 bg-base-200 gap-1 scroll-mx-2">
-	<div class="flex flex-col flex-1 bg-base-100 p-2 rounded-lg border-2 border-base-300">
-		{#each chat?.messages ?? [] as message}
-			{#if message.role === 'user'}
-				<div class="chat chat-end">
-					<div class="chat-bubble text-sm">{message.content}</div>
-				</div>
-			{:else}
-				{@const htmlContent = marked(message.content)}
-				<div class="prose prose-sm">{@html htmlContent}</div>
+	<div class="flex flex-col flex-1 bg-base-100 rounded-lg border-2 border-base-300">
+		<div class="flex items-center justify-between bg-base-300">
+			<div class="text-sm ml-2">OpenCode</div>
+			<button type="button" class="btn btn-square btn-ghost btn-xs" onclick={closeChat}>
+				<XIcon size={16} />
+			</button>
+		</div>
+		<div class="flex flex-col p-2">
+			{#each chat?.messages ?? [] as message}
+				{#if message.role === 'user'}
+					<div class="chat chat-end">
+						<div class="chat-bubble text-sm">{message.content}</div>
+					</div>
+				{:else}
+					{@const htmlContent = marked(message.content)}
+					{#if message.content === '.'}
+						<div class="badge badge-success">Done</div>
+					{:else}
+						<div class="prose prose-sm">{@html htmlContent}</div>
+					{/if}
+				{/if}
+			{/each}
+			{#if isRunning}
+				<span class="loading loading-ball"></span>
 			{/if}
-		{/each}
-		{#if isRunning}
-			<span class="loading loading-ball"></span>
-		{/if}
+		</div>
 	</div>
 	<input
 		name="prompt"
