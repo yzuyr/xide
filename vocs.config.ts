@@ -12,5 +12,21 @@ export default defineConfig({
 			icon: 'x',
 			link: 'https://x.com/xidedev'
 		}
+	],
+	sidebar: [
+		{
+			text: 'Getting Started',
+			link: '/docs'
+		},
+		{
+			text: 'Config Reference',
+			link: '/config'
+		}
+	],
+	topNav: [
+		{
+			text: 'Docs',
+			link: '/docs'
+		}
 	]
 });
