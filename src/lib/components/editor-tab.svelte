@@ -23,7 +23,6 @@
 	} = $props();
 
 	let content = $state<string>();
-	let contentChangedAt = $state<Date>();
 	let position = $state<Monaco.Position>();
 	let editor = $state<Monaco.editor.IStandaloneCodeEditor>();
 	let editorElement = $state<HTMLElement>();
@@ -51,7 +50,6 @@
 		lastSavedContent = content;
 		try {
 			await writeTextFile(await getWorkspacePath(tab.filePath), content);
-			contentChangedAt = new Date();
 		} finally {
 			// Keep the saving state for a brief moment to catch the file watcher event
 			setTimeout(() => {

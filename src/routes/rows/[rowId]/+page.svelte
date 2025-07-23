@@ -90,28 +90,22 @@
 	}}
 />
 
-{#if tabIds.length > 0}
-	<PaneGroup direction="horizontal" class="flex-1 mt-8 bg-base-200 px-1 pb-1">
-		{#each tabs ?? [] as tab, index}
-			{#if tab}
-				<Pane defaultSize={50} minSize={25} class="h-full flex">
-					{#if editorStore.monacoReady}
-						<EditorTab {tab} />
-					{/if}
-				</Pane>
-				{#if workspaceStore.chatVisible || index < tabIds.length - 1}
-					<PaneResizer class="bg-base-200 w-1 h-full"></PaneResizer>
+<PaneGroup direction="horizontal" class="flex-1 mt-8 bg-base-200 px-1 pb-1">
+	{#each tabs ?? [] as tab, index (tab?.id)}
+		{#if tab}
+			<Pane defaultSize={50} minSize={25} class="h-full flex">
+				{#if editorStore.monacoReady}
+					<EditorTab {tab} />
 				{/if}
-			{/if}
-		{/each}
-		{#if workspaceStore.chatVisible}
-			<Pane defaultSize={25} minSize={25} class="h-full flex">
-				<Chat />
 			</Pane>
+			{#if workspaceStore.chatVisible || index < tabIds.length - 1}
+				<PaneResizer class="bg-base-200 w-1 h-full"></PaneResizer>
+			{/if}
 		{/if}
-	</PaneGroup>
-{:else}
-	<div class="flex-1 flex items-center justify-center">
-		<div class="text-sm">No tabs open</div>
-	</div>
-{/if}
+	{/each}
+	{#if workspaceStore.chatVisible}
+		<Pane defaultSize={25} minSize={25} class="h-full flex">
+			<Chat />
+		</Pane>
+	{/if}
+</PaneGroup>

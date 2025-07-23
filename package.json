@@ -1,5 +1,5 @@
 {
-	"name": "xide",
+	"name": "xidedev",
 	"version": "0.1.0",
 	"description": "",
 	"type": "module",
@@ -11,7 +11,10 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"tauri": "tauri",
 		"format": "prettier --write .",
-		"lint": "prettier --check ."
+		"lint": "prettier --check .",
+		"docs:dev": "vocs dev",
+		"docs:build": "vocs build",
+		"docs:preview": "vocs preview"
 	},
 	"license": "MIT",
 	"dependencies": {
@@ -61,6 +64,7 @@
 		"tailwindcss": "^4.1.11",
 		"trap-focus-svelte": "^1.1.0",
 		"ts-pattern": "^5.7.1",
+		"vocs": "1.0.13",
 		"zod": "^4.0.5"
 	},
 	"devDependencies": {

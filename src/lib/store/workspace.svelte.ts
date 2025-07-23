@@ -91,15 +91,12 @@ class WorkspaceStore {
 	}) {
 		const id = crypto.randomUUID();
 		let rowIndex = this.rows.findIndex((row) => row.id === rowId);
-
-		// If row doesn't exist, create a new one
 		if (rowIndex === -1) {
 			const newRow = this.addRow();
 			rowId = newRow.id;
 			rowIndex = this.rows.length - 1;
 			this.setCurrentRowId(rowId);
 		}
-
 		this.rows[rowIndex].tabIds.push(id);
 		this.tabs.set(id, { id, rowId, filePath, external });
 		this.currentTabId = id;
@@ -162,50 +159,63 @@ class WorkspaceStore {
 	}
 
 	async nextRow({ rowId }: { rowId: string }) {
-		const currentRow = this.findRowById(rowId);
-		if (!currentRow) return;
-		const nextRowIndex = this.rows.findIndex((row) => row.id === rowId) + 1;
-		const nextRow = this.rows[nextRowIndex];
-
-		if (nextRow?.tabIds.length > 0) {
-			await goto(`/rows/${nextRow.id}`);
-			const firstTabId = nextRow.tabIds[0];
-			this.setCurrentTabId(firstTabId);
-			return emit('focus-tab', { id: firstTabId });
+		// If only one row, navigate to overview
+		if (this.rows.length === 1) {
+			return goto('/');
 		}
 
-		if (currentRow?.tabIds.length === 0) {
-			const firstRow = this.rows[0];
-			await goto(`/rows/${firstRow.id}`);
-			const firstTabId = firstRow.tabIds[0];
+		const currentRowIndex = this.rows.findIndex((row) => row.id === rowId);
+		if (currentRowIndex === -1) return;
+
+		const nextRowIndex = currentRowIndex + 1;
+		const targetRow = nextRowIndex < this.rows.length ? this.rows[nextRowIndex] : this.rows[0];
+
+		this.setCurrentRowId(targetRow.id);
+
+		// If target row has tabs, set the current tab before navigation
+		if (targetRow.tabIds.length > 0) {
+			const firstTabId = targetRow.tabIds[0];
 			this.setCurrentTabId(firstTabId);
-			return emit('focus-tab', { id: firstTabId });
 		}
 
-		if (!nextRow) {
-			const newRow = this.addRow();
-			await goto(`/rows/${newRow.id}`);
-			const firstTabId = newRow.tabIds[0];
-			this.setCurrentTabId(firstTabId);
+		await goto(`/rows/${targetRow.id}`);
+
+		// Focus the tab after navigation
+		if (targetRow.tabIds.length > 0) {
+			const firstTabId = targetRow.tabIds[0];
 			return emit('focus-tab', { id: firstTabId });
 		}
-
-		await goto(`/rows/${nextRow.id}`);
-		const firstTabId = nextRow.tabIds[0];
-		this.setCurrentTabId(firstTabId);
-		return emit('focus-tab', { id: firstTabId });
 	}
 
 	async prevRow({ rowId }: { rowId: string }) {
-		const currentRow = this.findRowById(rowId);
-		if (!currentRow) return;
-		const prevRowIndex = this.rows.findIndex((row) => row.id === rowId) - 1;
-		const prevRow = this.rows[prevRowIndex];
-		if (!prevRow) return;
-		await goto(`/rows/${prevRowIndex}`);
-		const firstTabId = this.rows[prevRowIndex].tabIds[0];
-		this.setCurrentTabId(firstTabId);
-		return emit('focus-tab', { id: firstTabId });
+		// If only one row, navigate to overview
+		if (this.rows.length === 1) {
+			return goto('/');
+		}
+
+		const currentRowIndex = this.rows.findIndex((row) => row.id === rowId);
+		if (currentRowIndex === -1) return;
+
+		const prevRowIndex = currentRowIndex - 1;
+		const targetRow = prevRowIndex >= 0 ? this.rows[prevRowIndex] : this.rows[this.rows.length - 1];
+
+		if (!targetRow) return;
+
+		this.setCurrentRowId(targetRow.id);
+
+		// If target row has tabs, set the current tab before navigation
+		if (targetRow.tabIds.length > 0) {
+			const firstTabId = targetRow.tabIds[0];
+			this.setCurrentTabId(firstTabId);
+		}
+
+		await goto(`/rows/${targetRow.id}`);
+
+		// Focus the tab after navigation
+		if (targetRow.tabIds.length > 0) {
+			const firstTabId = targetRow.tabIds[0];
+			return emit('focus-tab', { id: firstTabId });
+		}
 	}
 
 	async selectRootDir() {

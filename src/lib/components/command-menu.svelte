@@ -15,7 +15,6 @@
 	import { onDestroy } from 'svelte';
 	import { SHIKI_LANGUAGES, SHIKI_THEMES } from '$lib/const';
 	import { goto } from '$app/navigation';
-	import { getConfigPath } from '$lib/store/config.svelte';
 
 	let inputElement = $state<HTMLInputElement>();
 
@@ -70,7 +69,7 @@
 			: combinedCommands
 	);
 
-	const allCommands: ExecutableCommand[] = $derived([...metaCommands, ...filteredCommands]);
+	const allCommands: ExecutableCommand[] = $derived([...filteredCommands, ...metaCommands]);
 
 	const activeCommand = $derived(allCommands[appStore.currentCommandIndex]);
 
