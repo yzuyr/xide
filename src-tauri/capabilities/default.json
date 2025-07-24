@@ -12,14 +12,24 @@
     "dialog:default",
     "fs:default",
     "fs:allow-home-meta-recursive",
+    "fs:allow-config-meta-recursive",
     "fs:allow-watch",
     "fs:allow-unwatch",
+    { "identifier": "fs:allow-exists", "allow": [{"path": "$HOME/**/*"}, {"path": "$CONFIG/**/*"}] },
+    { "identifier": "fs:allow-read", "allow": [{"path": "$HOME/**/*"}, { "path": "$CONFIG/**/*" }] },
     "fs:allow-home-write-recursive",
+    "fs:allow-config-write-recursive",
+    { "identifier": "fs:scope-home-recursive", "allow": [{ "path": "$HOME/**/*" }] },
+    "fs:allow-home-read-recursive",
+    "fs:allow-config-read-recursive",
     {
       "identifier": "fs:scope",
       "allow": [
         {
           "path": "$HOME/**/*"
+        },
+        {
+          "path": "$CONFIG/**/*"
         }
       ]
     },

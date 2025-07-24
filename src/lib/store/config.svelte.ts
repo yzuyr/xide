@@ -52,11 +52,11 @@ async function writeDefaultConfig() {
 }
 
 async function getConfigDir() {
-	return join('.config', 'xide');
+	return join(await homeDir(), '.config', 'xide');
 }
 
 export async function getConfigPath() {
-	return join(await homeDir(), await getConfigDir(), 'config.toml');
+	return join(await getConfigDir(), 'config.toml');
 }
 
 async function readConfig() {
