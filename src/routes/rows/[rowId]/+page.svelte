@@ -1,10 +1,8 @@
 <script lang="ts">
 	import { shortcut } from '@svelte-put/shortcut';
-	import { PaneGroup, Pane, PaneResizer } from 'paneforge';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import EditorTab from '$lib/components/editor-tab.svelte';
 	import { workspaceStore } from '$lib/store/workspace.svelte';
-	import { style } from 'svelte-body';
 	import { appStore } from '$lib/store/app.svelte';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
@@ -12,14 +10,15 @@
 	import { goto } from '$app/navigation';
 	import Chat from '$lib/components/chat.svelte';
 	import { editorStore } from '$lib/store/editor.svelte';
+	import { Virtualizer } from 'virtua/svelte';
+	import clsx from 'clsx';
 
 	const currentRowId = $derived(page.params.rowId);
 	let innerWidth = $state(0);
 	const tabIds = $derived(workspaceStore.findRowById(currentRowId)?.tabIds ?? []);
-	const tabs = $derived(tabIds.map((tabId) => workspaceStore.findTabById(tabId)));
-	const bodyWidth = $derived(tabIds.length === 1 ? innerWidth : tabIds.length * innerWidth * 0.75);
-	const bodyStyle = $derived(tabIds.length > 0 ? `width: ${bodyWidth}px;` : 'width: 100%;');
-
+	const tabs = $derived(
+		tabIds.map((tabId) => workspaceStore.findTabById(tabId)).filter((tab) => tab !== undefined)
+	);
 	async function openFilePicker() {
 		const files = await open({
 			multiple: true,
@@ -44,13 +43,14 @@
 		if (!workspaceStore.currentTabId) {
 			workspaceStore.setCurrentTabId(tabIds[0]);
 		}
-		emit('focus-tab', { id: workspaceStore.currentTabId });
-		editorStore.loadEditor();
+		editorStore.loadEditor().then(() => {
+			setTimeout(() => {
+				emit('focus-tab', { id: workspaceStore.currentTabId });
+			}, 100);
+		});
 		editorStore.setupCopilot();
 	});
 </script>
-
-<svelte:body use:style={bodyStyle} />
 
 <svelte:window
 	bind:innerWidth
@@ -85,27 +85,40 @@
 				modifier: ['meta'],
 				callback: () => goto('/'),
 				preventDefault: true
+			},
+			{
+				key: 'w',
+				modifier: ['meta'],
+				callback: () => {
+					if (!workspaceStore.currentTabId) return;
+					if (tabs.length > 0) {
+						return workspaceStore.removeTab({ tabId: workspaceStore.currentTabId });
+					}
+					return goto('/');
+				},
+				preventDefault: true
 			}
 		]
 	}}
 />
 
-<PaneGroup direction="horizontal" class="flex-1 mt-8 bg-base-200 px-1 pb-1">
-	{#each tabs ?? [] as tab, index (tab?.id)}
-		{#if tab}
-			<Pane defaultSize={50} minSize={25} class="h-full flex">
-				{#if editorStore.monacoReady}
+<div class="flex-1 flex mt-8 px-1 pb-1 bg-base-200 overflow-x-auto">
+	{#if editorStore.monacoReady}
+		<Virtualizer data={tabs} getKey={(tab, index) => tab?.id ?? index} horizontal>
+			{#snippet children(tab)}
+				<div
+					class={clsx('h-full flex flex-col scroll-mx-2', tabs.length > 1 && 'mr-1')}
+					data-tab-id={tab.id}
+					style={tabs.length > 1
+						? `width: calc(${innerWidth * 0.75}px);`
+						: `width: calc(${innerWidth}px - 0.5rem);`}
+				>
 					<EditorTab {tab} />
-				{/if}
-			</Pane>
-			{#if workspaceStore.chatVisible || index < tabIds.length - 1}
-				<PaneResizer class="bg-base-200 w-1 h-full"></PaneResizer>
-			{/if}
-		{/if}
-	{/each}
-	{#if workspaceStore.chatVisible}
-		<Pane defaultSize={25} minSize={25} class="h-full flex">
-			<Chat />
-		</Pane>
+				</div>
+			{/snippet}
+		</Virtualizer>
 	{/if}
-</PaneGroup>
+	{#if workspaceStore.chatVisible}
+		<Chat />
+	{/if}
+</div>

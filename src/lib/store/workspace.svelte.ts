@@ -25,6 +25,7 @@ class WorkspaceStore {
 	currentRowId = $state<string>();
 	tabs = $state<Map<string, Tab>>(new Map());
 	rows = $state<Row[]>([]);
+	dirList = $state<string[]>([]);
 	fileList = $state<string[]>([]);
 	chatVisible = $state<boolean>(false);
 
@@ -243,7 +244,17 @@ class WorkspaceStore {
 		return goto(`/rows/${settingsTab.rowId}`);
 	}
 
-	async processDir(dir: string, fileList: string[] = [], ignoreList: string[] = []) {
+	async processDir({
+		dir,
+		fileList = [],
+		dirList = [],
+		ignoreList = []
+	}: {
+		dir: string;
+		fileList?: string[];
+		dirList?: string[];
+		ignoreList?: string[];
+	}) {
 		let files = await readDir(dir);
 		if (files.some((file) => file.name === '.gitignore')) {
 			const gitignoreContent = await readTextFile(await join(dir, '.gitignore'));
@@ -254,7 +265,15 @@ class WorkspaceStore {
 				const ignore = fastIgnore(ignoreList);
 				const shouldIgnore = ignore?.(file.name) ?? false;
 				if (shouldIgnore) continue;
-				await this.processDir(await join(dir, file.name), fileList, ignoreList);
+				const currentDir = await join(dir, file.name);
+				const relativeDir = currentDir.replace(this.rootDir ?? '', '').substring(1);
+				dirList.push(relativeDir);
+				await this.processDir({
+					dir: await join(dir, file.name),
+					fileList,
+					dirList,
+					ignoreList
+				});
 			} else {
 				const relativeDir = (await join(dir, file.name))
 					.replace(this.rootDir ?? '', '')
@@ -263,12 +282,19 @@ class WorkspaceStore {
 				fileList.push(relativeDir);
 			}
 		}
-		return fileList;
+		return { fileList, dirList };
 	}
 
 	async buildFileList() {
 		if (!this.rootDir) return;
-		this.fileList = await this.processDir(this.rootDir, [], [BASE_IGNORE_LIST]);
+		const { fileList, dirList } = await this.processDir({
+			dir: this.rootDir,
+			ignoreList: [BASE_IGNORE_LIST],
+			fileList: [],
+			dirList: []
+		});
+		this.fileList = fileList;
+		this.dirList = dirList;
 	}
 }
 

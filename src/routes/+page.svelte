@@ -50,6 +50,7 @@
 			{#each workspaceStore.rows as row, rowIndex}
 				<div class="group flex gap-2 items-center">
 					<button
+						type="button"
 						class="btn btn-ghost font-[Geist_Mono] text-xl font-semibold h-20 w-20 items-center justify-center"
 						onclick={() => workspaceStore.removeRow(row.id)}
 					>
@@ -66,6 +67,7 @@
 						{/if}
 					{/each}
 					<button
+						type="button"
 						onclick={() => addTabToRow(row.id)}
 						class={clsx(
 							'btn w-32 h-20 group-hover:opacity-100',
@@ -78,7 +80,9 @@
 			{/each}
 			<div class="flex gap-2 items-center">
 				<div class="font-[Geist_Mono] text-xl w-20 items-center justify-center"></div>
-				<button onclick={() => workspaceStore.addRow()} class="btn w-32 h-20"> <PlusIcon /></button>
+				<button type="button" onclick={() => workspaceStore.addRow()} class="btn w-32 h-20">
+					<PlusIcon /></button
+				>
 			</div>
 		</div>
 		{#if workspaceStore.chatVisible}
@@ -88,7 +92,7 @@
 		{/if}
 	{:else}
 		<div class="flex flex-col flex-1 justify-center items-center">
-			<button class="btn" onclick={() => workspaceStore.selectRootDir()}>
+			<button type="button" class="btn" onclick={() => workspaceStore.selectRootDir()}>
 				<FolderIcon size={16} />
 				<span>Open Project</span>
 			</button>

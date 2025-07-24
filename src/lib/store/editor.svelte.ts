@@ -3,10 +3,10 @@ import { CompletionCopilot } from 'monacopilot';
 import { configStore } from './config.svelte';
 import { generateText } from 'ai';
 import { workspaceStore } from './workspace.svelte';
-import loader from '@monaco-editor/loader';
+import * as monaco from 'monaco-editor';
 import { createHighlighter } from 'shiki';
 import { SHIKI_LANGUAGES, SHIKI_THEMES } from '$lib/const';
-import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api';
+import * as Monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import { shikiToMonaco } from '@shikijs/monaco';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ResultAsync } from 'neverthrow';
@@ -22,7 +22,7 @@ class EditorStore {
 	setupCopilot() {
 		this.copilot = new CompletionCopilot(undefined, {
 			async model(prompt) {
-				const model = createOpenAICompatible({
+				const aiModel = createOpenAICompatible({
 					name: 'autocomplete',
 					baseURL: 'https://openrouter.ai/api/v1',
 					headers: {
@@ -30,7 +30,7 @@ class EditorStore {
 					}
 				});
 				const response = await generateText({
-					model: model(configStore.config.ai.autocomplete.model),
+					model: aiModel(configStore.config.ai.autocomplete.model),
 					prompt: `Context: ${prompt.context}\nFile: ${prompt.fileContent}\nTask: ${prompt.instruction}`,
 					temperature: 0.1,
 					maxTokens: 256
@@ -43,46 +43,55 @@ class EditorStore {
 	async loadEditor() {
 		this.monacoReady = false;
 		if (!workspaceStore.rootDir) return;
-		const monacoEditor = await import('monaco-editor');
 		const highlighter = await createHighlighter({
 			themes: SHIKI_THEMES,
 			langs: SHIKI_LANGUAGES
 		});
-		loader.config({ monaco: monacoEditor.default });
-		this.monaco = await loader.init();
 		for (const language of SHIKI_LANGUAGES) {
-			this.monaco.languages.register({ id: language });
+			monaco.languages.register({ id: language });
 		}
-		shikiToMonaco(highlighter, this.monaco);
-		this.monaco.editor.registerLinkOpener({
+		shikiToMonaco(highlighter, monaco);
+		monaco.languages.typescript.typescriptDefaults.setEagerModelSync(true);
+		monaco.editor.registerLinkOpener({
 			async open(resource) {
 				await openUrl(resource.toString());
 				return true;
 			}
 		});
-		this.monaco.editor.registerEditorOpener({
+		monaco.editor.registerEditorOpener({
 			openCodeEditor(source, resource, selectionOrPosition) {
 				console.log('>>>OPEN', source, resource, selectionOrPosition);
 				return true;
 			}
 		});
-		const tsconfigPath = await ResultAsync.fromPromise(
-			findUp('tsconfig.json', workspaceStore.rootDir),
-			(error) => error
-		);
-		if (tsconfigPath.isErr()) {
-			this.monacoReady = true;
-			return;
+
+		// Handle TypeScript configuration with proper error handling
+		try {
+			const tsconfigPath = await ResultAsync.fromPromise(
+				findUp('tsconfig.json', workspaceStore.rootDir),
+				(error) => error
+			);
+
+			if (tsconfigPath.isOk() && tsconfigPath.value) {
+				const tsconfigContent = await readTextFile(tsconfigPath.value);
+				const tsconfig = JSON5.parse(tsconfigContent);
+
+				if (tsconfig?.compilerOptions) {
+					monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+						...tsconfig.compilerOptions,
+						moduleResolution:
+							tsconfig?.compilerOptions?.moduleResolution === 'bundler'
+								? monaco.languages.typescript.ModuleResolutionKind.NodeJs
+								: tsconfig?.compilerOptions?.moduleResolution
+					});
+				}
+			}
+		} catch (error) {
+			// Silently handle TypeScript config errors to prevent editor crashes
+			console.warn('Failed to load TypeScript configuration:', error);
 		}
-		const tsconfigContent = await readTextFile(tsconfigPath.value ?? '');
-		const tsconfig = JSON5.parse(tsconfigContent);
-		this.monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-			...tsconfig.compilerOptions,
-			moduleResolution:
-				tsconfig?.compilerOptions?.moduleResolution === 'bundler'
-					? this.monaco.languages.typescript.ModuleResolutionKind.NodeJs
-					: tsconfig?.compilerOptions?.moduleResolution
-		});
+
+		this.monaco = monaco;
 		this.monacoReady = true;
 	}
 }

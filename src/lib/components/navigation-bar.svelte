@@ -39,6 +39,7 @@
 	{#if workspaceStore.currentTabId}
 		<div class="flex gap-1">
 			<button
+				type="button"
 				class="btn btn-ghost btn-square btn-xs"
 				onclick={() =>
 					workspaceStore.currentTabId &&
@@ -50,6 +51,7 @@
 				{rowIndex >= 0 ? rowIndex : '?'}/{tabIndex >= 0 ? tabIndex : '?'}
 			</a>
 			<button
+				type="button"
 				class="btn btn-ghost btn-square btn-xs"
 				onclick={() =>
 					workspaceStore.currentTabId &&
@@ -63,19 +65,22 @@
 	{/if}
 	<div class="flex gap-1">
 		{#if appStore.configDirty}
-			<button class="btn btn-xs" onclick={reloadEditor}>Reload Editor</button>
+			<button type="button" class="btn btn-xs" onclick={reloadEditor}>Reload Editor</button>
 		{/if}
 		<button class="btn btn-xs btn-square btn-ghost" onclick={() => appStore.toggleCommandMenu()}
 			><SearchIcon size={16} /></button
 		>
 		{#if workspaceStore.rootDir}
 			<button
+				type="button"
 				class={clsx('btn btn-xs btn-square', !workspaceStore.chatVisible && 'btn-ghost')}
 				onclick={() => workspaceStore.toggleChat()}><MessageCircleIcon size={16} /></button
 			>
 		{/if}
-		<button class="btn btn-xs btn-square btn-ghost" onclick={() => workspaceStore.openSettings()}
-			><CogIcon size={16} /></button
+		<button
+			type="button"
+			class="btn btn-xs btn-square btn-ghost"
+			onclick={() => workspaceStore.openSettings()}><CogIcon size={16} /></button
 		>
 	</div>
 </div>

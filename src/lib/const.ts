@@ -121,6 +121,7 @@ export const EXTENSION_TO_LANG: Record<string, string> = {
 	sql: 'sql',
 	styl: 'stylus',
 	svelte: 'svelte',
+	svg: 'xml',
 	swift: 'swift',
 	tf: 'terraform',
 	tfvars: 'terraform',
@@ -138,6 +139,8 @@ export const EXTENSION_TO_LANG: Record<string, string> = {
 };
 
 export const SHIKI_LANGUAGES = Object.values(EXTENSION_TO_LANG);
+
+export const GARBAGE_FILES = ['.DS_Store'];
 
 export const BASE_IGNORE_LIST = dedent`
 .DS_Store

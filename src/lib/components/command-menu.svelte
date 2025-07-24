@@ -5,20 +5,19 @@
 	import { createForm } from 'felte';
 	import { matchSorter } from 'match-sorter';
 	import clsx from 'clsx';
-	import { watch } from 'runed';
+	import { watch, resource } from 'runed';
 	import { match } from 'ts-pattern';
 	import CodeHighlighter from './code-highlighter.svelte';
 	import { join } from '@tauri-apps/api/path';
-	import { exists, mkdir, readTextFile, stat, writeTextFile } from '@tauri-apps/plugin-fs';
-	import { createQuery } from '@tanstack/svelte-query';
-	import { createHighlighter } from 'shiki';
-	import { onDestroy } from 'svelte';
-	import { SHIKI_LANGUAGES, SHIKI_THEMES } from '$lib/const';
+	import { exists, mkdir, readDir, readTextFile, stat, writeTextFile } from '@tauri-apps/plugin-fs';
+	import { GARBAGE_FILES } from '$lib/const';
 	import { goto } from '$app/navigation';
+	import { ChevronRightIcon, FileIcon, FolderIcon } from 'lucide-svelte';
+	import { trapFocus } from 'trap-focus-svelte';
 
 	let inputElement = $state<HTMLInputElement>();
 
-	const { form, data } = $derived(
+	const { form, data, setFields } = $derived(
 		createForm({
 			async onSubmit() {
 				return executeCommand(activeCommand);
@@ -53,23 +52,42 @@
 		})
 	);
 
+	const dirCommands: ExecutableCommand[] = $derived(
+		workspaceStore.dirList.map((dir) => {
+			return {
+				label: dir,
+				value: dir,
+				type: 'directory'
+			};
+		})
+	);
+
 	const metaCommands: ExecutableCommand[] = $derived(
 		$data.query && !workspaceStore.fileList.includes($data.query)
-			? [{ label: 'Create File', value: 'create_file', type: 'command' }]
+			? [
+					{ label: 'Create File', value: 'create_file', type: 'command' },
+					{ label: 'Create Directory', value: 'create_dir', type: 'command' }
+				]
 			: []
 	);
 
-	const combinedCommands: ExecutableCommand[] = $derived([...fileCommands, ...BASE_COMMANDS]);
+	const combinedCommands: ExecutableCommand[] = $derived([...fileCommands, ...dirCommands]);
 
 	const filteredCommands: ExecutableCommand[] = $derived(
 		$data.query
 			? matchSorter(combinedCommands, $data.query, {
 					keys: ['label', 'value']
 				})
-			: combinedCommands
+			: combinedCommands.sort((a, b) => {
+					return a.label.toLowerCase().localeCompare(b.label.toLowerCase());
+				})
 	);
 
-	const allCommands: ExecutableCommand[] = $derived([...filteredCommands, ...metaCommands]);
+	const allCommands: ExecutableCommand[] = $derived([
+		...filteredCommands,
+		...metaCommands,
+		...BASE_COMMANDS
+	]);
 
 	const activeCommand = $derived(allCommands[appStore.currentCommandIndex]);
 
@@ -83,6 +101,23 @@
 				});
 				appStore.setCommandMenuOpen(false);
 				return goto(`/rows/${workspaceStore.currentRowId}?tabId=${tabId}`);
+			})
+			.with({ type: 'directory' }, async ({ value }) => {
+				if (!workspaceStore.currentRowId) return;
+				if (!workspaceStore.rootDir) return;
+				const fullDir = await join(workspaceStore.rootDir, value);
+				const entries = await readDir(fullDir);
+				const files = entries.filter(
+					(entry) => !entry.isDirectory && !GARBAGE_FILES.includes(entry.name)
+				);
+				for (const file of files) {
+					workspaceStore.addTab({
+						rowId: workspaceStore.currentRowId,
+						filePath: await join(value, file.name)
+					});
+				}
+				appStore.setCommandMenuOpen(false);
+				return goto(`/rows/${workspaceStore.currentRowId}`);
 			})
 			.with({ type: 'command' }, async ({ value }) => {
 				if (value === 'create_file') {
@@ -103,18 +138,22 @@
 					workspaceStore.setCurrentTabId(tabId);
 					return goto(`/rows/${workspaceStore.currentRowId}`);
 				}
+				if (value === 'create_dir') {
+					if (!workspaceStore.rootDir) return;
+					if (!workspaceStore.currentRowId) return;
+					const path = await join(workspaceStore.rootDir, $data.query);
+					const directoryExists = await exists(path);
+					if (directoryExists) return;
+					await mkdir(path, { recursive: true });
+					appStore.setCurrentCommandIndex(0);
+					await workspaceStore.buildFileList();
+					setFields({ query: '' });
+				}
 			})
 			.otherwise(() => {});
 	}
 
-	async function buildHighligher() {
-		return createHighlighter({
-			themes: SHIKI_THEMES,
-			langs: SHIKI_LANGUAGES
-		});
-	}
-
-	async function fetchPanelContent() {
+	async function fetchPanelContent(activeCommand: ExecutableCommand) {
 		return match(activeCommand)
 			.with({ type: 'file' }, async ({ value }) => {
 				if (!workspaceStore.rootDir) return;
@@ -122,37 +161,48 @@
 				try {
 					const meta = await stat(fullPath);
 					if (meta.size > 20000) {
-						return 'File is too large to display';
+						return {
+							type: 'file',
+							data: 'File is too large to display'
+						};
 					}
 					const content = await readTextFile(fullPath);
-					return content;
+					return {
+						type: 'file',
+						data: content
+					};
 				} catch (e) {
-					return '';
+					return {
+						type: 'file',
+						data: ''
+					};
 				}
 			})
-			.otherwise(async () => '');
+			.with({ type: 'directory' }, async ({ value }) => {
+				if (!workspaceStore.rootDir) return;
+				const fullPath = await join(workspaceStore.rootDir, value);
+				const entries = await readDir(fullPath);
+				const files = entries
+					.filter((entry) => !entry.isDirectory && !GARBAGE_FILES.includes(entry.name))
+					.map((entry) => entry.name);
+				return {
+					type: 'directory',
+					data: files
+				};
+			})
+			.otherwise(async () => {
+				return {
+					type: 'file',
+					data: ''
+				};
+			});
 	}
 
-	const highlighterQuery = $derived(
-		createQuery({
-			queryKey: ['highlighter'],
-			queryFn: buildHighligher,
-			staleTime: Infinity
-		})
-	);
-
-	const panelQuery = $derived(
-		createQuery({
-			queryKey: [
-				'panel',
-				$data.query,
-				activeCommand.value,
-				activeCommand.type,
-				$highlighterQuery.isLoading
-			],
-			queryFn: fetchPanelContent,
-			enabled: appStore.commandMenuOpen && !$highlighterQuery.isLoading
-		})
+	const panelResource = resource(
+		() => activeCommand,
+		async () => {
+			return fetchPanelContent(activeCommand);
+		}
 	);
 
 	function getElementByIndex(index: number) {
@@ -218,10 +268,6 @@
 			inputElement?.focus();
 		}, 100);
 	});
-
-	onDestroy(() => {
-		$highlighterQuery.data?.dispose();
-	});
 </script>
 
 <svelte:window
@@ -231,7 +277,7 @@
 />
 
 {#if appStore.commandMenuOpen}
-	<form use:form class="modal modal-open">
+	<form use:form use:trapFocus class="modal modal-open">
 		<div class="modal-box max-w-[720px] max-h-[440px] h-full w-full p-0 flex">
 			<div class="flex flex-col flex-1">
 				<label class="input w-full rounded-t-lg border-x-0 border-t-0 rounded-b-none !outline-none">
@@ -249,32 +295,51 @@
 						{#each allCommands as command, index}
 							<li>
 								<button
+									type="button"
 									data-command-index={index}
 									class={clsx(
 										'scroll-my-2',
 										appStore.currentCommandIndex === index && 'menu-active'
 									)}
 									onclick={(event) => event.detail !== 0 && executeCommand(command)}
-									><span class="truncate">{command.label}</span></button
 								>
+									{#if command.type === 'file'}
+										<FileIcon size={16} />
+									{:else if command.type === 'directory'}
+										<FolderIcon size={16} />
+									{:else if command.type === 'command'}
+										<ChevronRightIcon size={16} />
+									{/if}
+									<span class="truncate">{command.label}</span>
+								</button>
 							</li>
 						{/each}
 					</ul>
 				</div>
 			</div>
 			<div class="flex flex-col flex-1 border-l border-base-content/10">
-				{#if $panelQuery.isLoading}
-					<p>Loading</p>
-				{:else if $highlighterQuery.data && $panelQuery.data}
+				{#if panelResource.loading}
+					<div></div>
+				{:else if panelResource.current?.type === 'file'}
 					<CodeHighlighter
-						highlighter={$highlighterQuery.data}
 						path={activeCommand.value}
-						code={$panelQuery.data}
+						code={panelResource.current?.data as string}
 					/>
+				{:else if panelResource.current?.type === 'directory'}
+					<ul class="menu bg-base-100 w-full">
+						{#each panelResource.current?.data ?? [] as file}
+							<li><a><FileIcon size={16} /><span class="truncate">{file}</span></a></li>
+						{/each}
+					</ul>
 				{/if}
 			</div>
 		</div>
-		<button class="modal-backdrop" onclick={() => appStore.toggleCommandMenu()} aria-label="Close"
+		<button
+			type="button"
+			class="modal-backdrop"
+			onclick={() => appStore.toggleCommandMenu()}
+			aria-label="Close"
+			data-tauri-drag-region
 		></button>
 	</form>
 {/if}

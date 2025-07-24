@@ -13,6 +13,7 @@
 	let isRunning = $state(false);
 	let formElement = $state<HTMLFormElement>();
 	let inputElement = $state<HTMLInputElement>();
+	let innerWidth = $state(0);
 
 	async function runAgent({ model, prompt }: { model: string; prompt: string }) {
 		if (!chatId) return;
@@ -99,6 +100,14 @@
 			if (!currentRow) return;
 			return emit('focus-tab', { id: currentRow.tabIds[0] });
 		}
+		if (event.key === 'i' && event.metaKey) {
+			event.preventDefault();
+			workspaceStore.toggleChat();
+			if (!workspaceStore.currentRowId) return;
+			const currentRow = workspaceStore.findRowById(workspaceStore.currentRowId);
+			if (!currentRow) return;
+			return emit('focus-tab', { id: workspaceStore.currentTabId });
+		}
 	}
 
 	function onInputFocus() {
@@ -118,10 +127,14 @@
 			behavior: 'smooth'
 		});
 		listen('focus-chat', () => {
-			formElement?.scrollIntoView({
-				behavior: 'smooth'
-			});
 			inputElement?.focus();
+			setTimeout(() => {
+				formElement?.scrollIntoView({
+					behavior: 'smooth',
+					inline: 'end',
+					block: 'end'
+				});
+			}, 20);
 		}).then((unlisten) => {
 			unlistenFocusFn = unlisten;
 		});
@@ -132,7 +145,14 @@
 	});
 </script>
 
-<form use:form bind:this={formElement} class="flex flex-col flex-1 bg-base-200 gap-1 scroll-mx-2">
+<svelte:window bind:innerWidth />
+
+<form
+	use:form
+	bind:this={formElement}
+	class="flex flex-col shrink-0 bg-base-200 gap-1 scroll-mx-2"
+	style={`width: ${innerWidth * 0.33}px;`}
+>
 	<div class="flex flex-col flex-1 bg-base-100 rounded-lg border-2 border-base-300">
 		<div class="flex items-center justify-between bg-base-300">
 			<div class="text-sm ml-2">OpenCode</div>
