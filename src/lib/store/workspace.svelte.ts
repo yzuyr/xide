@@ -6,6 +6,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
 import fastIgnore from 'fast-ignore';
 import { getConfigPath } from './config.svelte';
+import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 
 export type Tab = {
 	id: string;
@@ -16,17 +17,18 @@ export type Tab = {
 
 export type Row = {
 	id: string;
-	tabIds: string[];
+	tabIds: SvelteSet<string>;
 };
 
 class WorkspaceStore {
 	rootDir = $state<string>();
 	currentTabId = $state<string>();
 	currentRowId = $state<string>();
-	tabs = $state<Map<string, Tab>>(new Map());
+	tabs = $state<SvelteMap<string, Tab>>(new SvelteMap());
 	rows = $state<Row[]>([]);
 	dirList = $state<string[]>([]);
 	fileList = $state<string[]>([]);
+	explorerVisible = $state<boolean>(false);
 	chatVisible = $state<boolean>(false);
 
 	constructor() {
@@ -36,8 +38,32 @@ class WorkspaceStore {
 		}
 	}
 
+	reset() {
+		this.rootDir = undefined;
+		this.rows = [];
+		this.tabs = new SvelteMap();
+		this.dirList = [];
+		this.fileList = [];
+		this.explorerVisible = false;
+		this.chatVisible = false;
+		this.currentTabId = undefined;
+		this.currentRowId = undefined;
+		if (this.rows.length === 0) {
+			const newRow = this.addRow();
+			this.setCurrentRowId(newRow.id);
+		}
+	}
+
 	setRootDir(rootDir: string) {
 		this.rootDir = rootDir;
+	}
+
+	setExplorerVisible(visible: boolean) {
+		this.explorerVisible = visible;
+	}
+
+	toggleExplorer() {
+		this.setExplorerVisible(!this.explorerVisible);
 	}
 
 	setChatVisible(visible: boolean) {
@@ -77,7 +103,7 @@ class WorkspaceStore {
 	}
 
 	addRow() {
-		this.rows.push({ id: crypto.randomUUID(), tabIds: [] });
+		this.rows.push({ id: crypto.randomUUID(), tabIds: new SvelteSet<string>() });
 		return this.rows[this.rows.length - 1];
 	}
 
@@ -98,7 +124,7 @@ class WorkspaceStore {
 			rowIndex = this.rows.length - 1;
 			this.setCurrentRowId(rowId);
 		}
-		this.rows[rowIndex].tabIds.push(id);
+		this.rows[rowIndex].tabIds.add(id);
 		this.tabs.set(id, { id, rowId, filePath, external });
 		this.currentTabId = id;
 		return id;
@@ -109,19 +135,19 @@ class WorkspaceStore {
 		if (!tab?.rowId) return;
 		const rowIndex = this.rows.findIndex((row) => row.id === tab?.rowId);
 		if (rowIndex === -1) return;
-		this.rows[rowIndex].tabIds = this.rows[rowIndex].tabIds.filter((id) => id !== tabId);
+		this.rows[rowIndex].tabIds.delete(tabId);
 		this.tabs.delete(tabId);
 		if (this.currentTabId === tabId) {
 			const remainingTabIds = this.rows[rowIndex].tabIds;
-			if (remainingTabIds.length > 0) {
+			if (remainingTabIds.size > 0) {
 				// Switch to another tab in the same row
-				this.setCurrentTabId(remainingTabIds[0]);
+				this.setCurrentTabId(remainingTabIds.values().next().value);
 			} else {
 				// No more tabs in this row, clear currentTabId
 				this.setCurrentTabId(undefined);
 			}
 		}
-		if (this.rows[rowIndex].tabIds.length === 0) {
+		if (this.rows[rowIndex].tabIds.size === 0) {
 			this.removeRow(tab.rowId);
 			// If no rows left, create a new one
 			if (this.rows.length === 0) {
@@ -136,12 +162,12 @@ class WorkspaceStore {
 		if (!currentTab?.rowId) return;
 		const row = this.findRowById(currentTab.rowId);
 		if (!row) return;
-		const currentTabIndex = row.tabIds.findIndex((id) => id === tabId);
+		const currentTabIndex = Array.from(row.tabIds).findIndex((id) => id === tabId);
 		const nextTabIndex = currentTabIndex + 1;
-		if (row.tabIds.length > nextTabIndex) {
-			return emit('focus-tab', { id: row.tabIds[nextTabIndex] });
+		if (row.tabIds.size > nextTabIndex) {
+			return emit('focus-tab', { id: Array.from(row.tabIds)[nextTabIndex] });
 		}
-		const firstTabId = row.tabIds[0];
+		const firstTabId = Array.from(row.tabIds)[0];
 		return emit('focus-tab', { id: firstTabId });
 	}
 
@@ -150,22 +176,17 @@ class WorkspaceStore {
 		if (!currentTab?.rowId) return;
 		const row = this.findRowById(currentTab.rowId);
 		if (!row) return;
-		const currentTabIndex = row.tabIds.findIndex((id) => id === tabId);
+		const currentTabIndex = Array.from(row.tabIds).findIndex((id) => id === tabId);
 		const prevTabIndex = currentTabIndex - 1;
 		if (prevTabIndex >= 0) {
-			return emit('focus-tab', { id: row.tabIds[prevTabIndex] });
+			return emit('focus-tab', { id: Array.from(row.tabIds)[prevTabIndex] });
 		}
-		const lastTabId = row.tabIds[row.tabIds.length - 1];
+		const lastTabId = Array.from(row.tabIds)[row.tabIds.size - 1];
 		return emit('focus-tab', { id: lastTabId });
 	}
 
-	async nextRow({ rowId }: { rowId: string }) {
-		// If only one row, navigate to overview
-		if (this.rows.length === 1) {
-			return goto('/');
-		}
-
-		const currentRowIndex = this.rows.findIndex((row) => row.id === rowId);
+	async nextRow() {
+		const currentRowIndex = this.rows.findIndex((row) => row.id === this.currentRowId);
 		if (currentRowIndex === -1) return;
 
 		const nextRowIndex = currentRowIndex + 1;
@@ -174,27 +195,22 @@ class WorkspaceStore {
 		this.setCurrentRowId(targetRow.id);
 
 		// If target row has tabs, set the current tab before navigation
-		if (targetRow.tabIds.length > 0) {
-			const firstTabId = targetRow.tabIds[0];
+		if (targetRow.tabIds.size > 0) {
+			const firstTabId = Array.from(targetRow.tabIds)[0];
 			this.setCurrentTabId(firstTabId);
 		}
 
 		await goto(`/rows/${targetRow.id}`);
 
 		// Focus the tab after navigation
-		if (targetRow.tabIds.length > 0) {
-			const firstTabId = targetRow.tabIds[0];
+		if (targetRow.tabIds.size > 0) {
+			const firstTabId = Array.from(targetRow.tabIds)[0];
 			return emit('focus-tab', { id: firstTabId });
 		}
 	}
 
-	async prevRow({ rowId }: { rowId: string }) {
-		// If only one row, navigate to overview
-		if (this.rows.length === 1) {
-			return goto('/');
-		}
-
-		const currentRowIndex = this.rows.findIndex((row) => row.id === rowId);
+	async prevRow() {
+		const currentRowIndex = this.rows.findIndex((row) => row.id === this.currentRowId);
 		if (currentRowIndex === -1) return;
 
 		const prevRowIndex = currentRowIndex - 1;
@@ -205,16 +221,16 @@ class WorkspaceStore {
 		this.setCurrentRowId(targetRow.id);
 
 		// If target row has tabs, set the current tab before navigation
-		if (targetRow.tabIds.length > 0) {
-			const firstTabId = targetRow.tabIds[0];
+		if (targetRow.tabIds.size > 0) {
+			const firstTabId = Array.from(targetRow.tabIds)[0];
 			this.setCurrentTabId(firstTabId);
 		}
 
 		await goto(`/rows/${targetRow.id}`);
 
 		// Focus the tab after navigation
-		if (targetRow.tabIds.length > 0) {
-			const firstTabId = targetRow.tabIds[0];
+		if (targetRow.tabIds.size > 0) {
+			const firstTabId = Array.from(targetRow.tabIds)[0];
 			return emit('focus-tab', { id: firstTabId });
 		}
 	}
@@ -225,6 +241,7 @@ class WorkspaceStore {
 			directory: true
 		});
 		if (!dir) return;
+		this.reset();
 		this.setRootDir(dir);
 	}
 

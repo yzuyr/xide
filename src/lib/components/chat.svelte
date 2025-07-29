@@ -13,7 +13,6 @@
 	let isRunning = $state(false);
 	let formElement = $state<HTMLFormElement>();
 	let inputElement = $state<HTMLInputElement>();
-	let innerWidth = $state(0);
 
 	async function runAgent({ model, prompt }: { model: string; prompt: string }) {
 		if (!chatId) return;
@@ -90,15 +89,15 @@
 			if (!workspaceStore.currentRowId) return;
 			const currentRow = workspaceStore.findRowById(workspaceStore.currentRowId);
 			if (!currentRow) return;
-			const lastTabIndex = currentRow.tabIds.length - 1;
-			return emit('focus-tab', { id: currentRow.tabIds[lastTabIndex] });
+			const lastTabIndex = currentRow.tabIds.size - 1;
+			return emit('focus-tab', { id: Array.from(currentRow.tabIds)[lastTabIndex] });
 		}
 		if (event.key === 'l' && event.ctrlKey) {
 			event.preventDefault();
 			if (!workspaceStore.currentRowId) return;
 			const currentRow = workspaceStore.findRowById(workspaceStore.currentRowId);
 			if (!currentRow) return;
-			return emit('focus-tab', { id: currentRow.tabIds[0] });
+			return emit('focus-tab', { id: Array.from(currentRow.tabIds)[0] });
 		}
 		if (event.key === 'i' && event.metaKey) {
 			event.preventDefault();
@@ -145,17 +144,10 @@
 	});
 </script>
 
-<svelte:window bind:innerWidth />
-
-<form
-	use:form
-	bind:this={formElement}
-	class="flex flex-col shrink-0 bg-base-200 gap-1 scroll-mx-2"
-	style={`width: ${innerWidth * 0.33}px;`}
->
-	<div class="flex flex-col flex-1 bg-base-100 rounded-lg border-2 border-base-300">
+<form use:form bind:this={formElement} class="flex flex-col flex-1 shrink-0 bg-base-200 gap-1">
+	<div class="flex flex-col flex-1 bg-base-100 border-2 border-base-300 rounded-lg">
 		<div class="flex items-center justify-between bg-base-300">
-			<div class="text-sm ml-2">OpenCode</div>
+			<div class="text-sm ml-2">opencode</div>
 			<button type="button" class="btn btn-square btn-ghost btn-xs" onclick={closeChat}>
 				<XIcon size={16} />
 			</button>
@@ -182,9 +174,10 @@
 	</div>
 	<input
 		name="prompt"
-		class="input w-full !outline-none border-2 border-base-300 focus:border-blue-500/50 rounded-lg"
+		class="input w-full rounded-lg !outline-none border-2 border-base-300 focus:border-primary"
 		onfocus={onInputFocus}
 		onkeydown={handleKeyDown}
+		placeholder="Plan and build with opencode"
 		bind:this={inputElement}
 	/>
 </form>

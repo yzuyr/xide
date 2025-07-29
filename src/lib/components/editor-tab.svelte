@@ -7,7 +7,6 @@
 	import clsx from 'clsx';
 	import { appStore } from '$lib/store/app.svelte';
 	import { EXTENSION_TO_LANG } from '$lib/const';
-	import { goto } from '$app/navigation';
 	import { registerCompletion } from 'monacopilot';
 	import { join } from '@tauri-apps/api/path';
 	import { watch } from 'runed';
@@ -15,6 +14,7 @@
 	import { configStore } from '$lib/store/config.svelte';
 	import { editorStore } from '$lib/store/editor.svelte';
 	import pDebounce from 'p-debounce';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	const {
 		tab
@@ -33,7 +33,9 @@
 	let saveTimeout = $state<number>();
 	const isFocused = $derived(tab.id === workspaceStore.currentTabId);
 	const row = $derived(workspaceStore.findRowById(tab.rowId));
-	const isLastTab = $derived(row?.tabIds[row?.tabIds?.length - 1] === tab.id);
+	const isLastTab = $derived(
+		Array.from(row?.tabIds ?? new SvelteSet<string>())[(row?.tabIds?.size ?? 0) - 1] === tab.id
+	);
 
 	async function getWorkspacePath(filePath: string) {
 		if (!workspaceStore.rootDir) throw new Error('Workspace root directory not found');
@@ -113,7 +115,10 @@
 			label: 'Tab Prev',
 			keybindings: [editorStore.monaco.KeyMod.WinCtrl | editorStore.monaco.KeyCode.KeyJ],
 			async run() {
-				if (workspaceStore.chatVisible && row?.tabIds[0] === tab.id) {
+				if (
+					workspaceStore.chatVisible &&
+					Array.from(row?.tabIds ?? new SvelteSet<string>())[0] === tab.id
+				) {
 					return emit('focus-chat');
 				}
 				return workspaceStore.prevTab({ tabId: tab.id });
@@ -124,7 +129,7 @@
 			label: 'Row Next',
 			keybindings: [editorStore.monaco.KeyMod.WinCtrl | editorStore.monaco.KeyCode.KeyK],
 			async run() {
-				return workspaceStore.nextRow({ rowId: tab.rowId });
+				return workspaceStore.nextRow();
 			}
 		});
 		editor.addAction({
@@ -132,7 +137,7 @@
 			label: 'Row Prev',
 			keybindings: [editorStore.monaco.KeyMod.WinCtrl | editorStore.monaco.KeyCode.KeyI],
 			async run() {
-				return workspaceStore.prevRow({ rowId: tab.rowId });
+				return workspaceStore.prevRow();
 			}
 		});
 		editor.addAction({
@@ -148,7 +153,9 @@
 			label: 'Overview',
 			keybindings: [editorStore.monaco.KeyMod.CtrlCmd | editorStore.monaco.KeyCode.KeyL],
 			async run() {
-				return goto('/');
+				workspaceStore.toggleExplorer();
+				if (workspaceStore.explorerVisible) return;
+				return focusHandler();
 			}
 		});
 		editor.addAction({
@@ -233,11 +240,13 @@
 		const wrapperElement = document.querySelector(`[data-tab-id="${tab.id}"]`);
 		editor?.focus();
 		setTimeout(() => {
-			wrapperElement?.scrollIntoView({
-				behavior: 'smooth',
-				inline: 'end',
-				block: 'end'
-			});
+			const parentRect = wrapperElement?.parentElement?.getBoundingClientRect();
+			if (!parentRect) return;
+			const editorRect = editorElement?.getBoundingClientRect();
+			if (!editorRect) return;
+			const scrollLeft = editorRect.left - parentRect.left;
+			const scrollTop = editorRect.top - parentRect.top;
+			editorElement?.scrollTo({ left: scrollLeft, top: scrollTop, behavior: 'smooth' });
 		}, 20);
 	}
 
@@ -353,19 +362,17 @@
 
 <div
 	class={clsx(
-		'flex border-2 rounded-lg flex-col flex-1 overflow-hidden',
-		isFocused
-			? 'border-blue-500/50 bg-blue-300/50 dark:bg-blue-900'
-			: 'bg-base-300 dark:bg-base-100 border-base-300 dark:border-base-100'
+		'flex flex-col flex-1 overflow-hidden border-r-2 border-base-300',
+		isFocused ? 'bg-primary' : 'bg-base-300 dark:bg-base-100'
 	)}
 >
-	<div class="group flex items-center justify-between">
+	<div class={clsx('group flex items-center justify-between', isFocused && 'text-primary-content')}>
 		<div class="flex gap-1 items-center px-2">
 			{#if tab.external}
 				<div
 					class={clsx(
 						'badge badge-outline badge-xs',
-						isFocused ? 'border-blue-500' : 'border-base-300'
+						isFocused ? 'border-primary-500' : 'border-base-300'
 					)}
 				>
 					EXTERNAL
@@ -382,9 +389,6 @@
 		</button>
 	</div>
 	<div class="flex-1 relative">
-		<div
-			bind:this={editorElement}
-			class={clsx('absolute inset-0 rounded-t-none rounded-b-lg overflow-hidden scroll-mx-2')}
-		></div>
+		<div bind:this={editorElement} class={clsx('absolute inset-0 overflow-hidden')}></div>
 	</div>
 </div>

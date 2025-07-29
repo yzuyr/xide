@@ -36,6 +36,16 @@
 
 	const BASE_COMMANDS: ExecutableCommand[] = [
 		{
+			label: 'Toggle Chat',
+			value: 'toggle_chat',
+			type: 'command'
+		},
+		{
+			label: 'Settings',
+			value: 'settings',
+			type: 'command'
+		},
+		{
 			label: 'Exit',
 			value: 'exit',
 			type: 'command'
@@ -280,7 +290,7 @@
 	<form use:form use:trapFocus class="modal modal-open">
 		<div class="modal-box max-w-[720px] max-h-[440px] h-full w-full p-0 flex">
 			<div class="flex flex-col flex-1">
-				<label class="input w-full rounded-t-lg border-x-0 border-t-0 rounded-b-none !outline-none">
+				<label class="input w-full border-x-0 border-t-0 !outline-none rounded-none">
 					<input
 						name="query"
 						class="!outline-none"
