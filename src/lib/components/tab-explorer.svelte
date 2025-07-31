@@ -38,7 +38,8 @@
 						{@const tab = workspaceStore.findTabById(tabId)}
 						<li>
 							<a
-								href={`/rows/${row.id}?tabId=${tabId}`}
+								href={`/rows/${row.id}`}
+								onclick={() => workspaceStore.setCurrentTabId(tabId)}
 								class={clsx(tabId === workspaceStore.currentTabId && 'menu-active')}
 								>{tab?.filePath ?? 'Untitled'}</a
 							>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api';
+	import * as Monaco from 'monaco-editor/esm/vs/editor/editor.api';
 	import { emit, listen } from '@tauri-apps/api/event';
 	import { workspaceStore, type Tab } from '$lib/store/workspace.svelte';
 	import { readTextFile, watchImmediate, writeTextFile } from '@tauri-apps/plugin-fs';
@@ -15,6 +15,8 @@
 	import { editorStore } from '$lib/store/editor.svelte';
 	import pDebounce from 'p-debounce';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { page } from '$app/state';
+	import { Menu } from '@tauri-apps/api/menu';
 
 	const {
 		tab
@@ -38,8 +40,8 @@
 	);
 
 	async function getWorkspacePath(filePath: string) {
-		if (!workspaceStore.rootDir) throw new Error('Workspace root directory not found');
 		if (tab.external) return filePath;
+		if (!workspaceStore.rootDir) throw new Error('Workspace root directory not found');
 		return join(workspaceStore.rootDir, filePath);
 	}
 
@@ -183,7 +185,6 @@
 	async function loadFile() {
 		if (!editorStore.monaco) return;
 		if (!editor) return;
-		if (!workspaceStore.rootDir) return;
 		const filePath = await getWorkspacePath(tab.filePath);
 		const language =
 			EXTENSION_TO_LANG[tab.filePath.split('.').pop() as keyof typeof EXTENSION_TO_LANG] ??
@@ -195,7 +196,20 @@
 			model = editorStore.monaco.editor.createModel(content, language, uri);
 		}
 		editor.setModel(model);
+		const cursorPosition = page.url.searchParams.get('position');
+		if (cursorPosition) {
+			const positionObject = JSON.parse(cursorPosition);
+			position = new editorStore.monaco.Position(positionObject.lineNumber, positionObject.column);
+			editor.setPosition(position);
+			editor.revealLine(position.lineNumber);
+		}
 		return language;
+	}
+
+	async function createContextMenu(event: MouseEvent) {
+		event.preventDefault();
+		const menu = await Menu.new({ items: [{ id: 'close-tab', text: 'Close Tab' }] });
+		menu.popup();
 	}
 
 	watch(
@@ -235,19 +249,28 @@
 		}
 	);
 
+	watch(
+		() => workspaceStore.currentTabId,
+		(tabId) => {
+			if (!editor) return;
+			if (!tabId) return;
+			if (tabId !== tab.id) return;
+			emit('scroll-to-tab', { tabId });
+			editor.focus();
+		}
+	);
+
+	watch(
+		() => workspaceStore.chatVisible,
+		(visible) => {
+			if (visible) return;
+			if (tab.id !== workspaceStore.currentTabId) return;
+			focusHandler();
+		}
+	);
+
 	function focusHandler() {
 		workspaceStore.setCurrentTabId(tab.id);
-		const wrapperElement = document.querySelector(`[data-tab-id="${tab.id}"]`);
-		editor?.focus();
-		setTimeout(() => {
-			const parentRect = wrapperElement?.parentElement?.getBoundingClientRect();
-			if (!parentRect) return;
-			const editorRect = editorElement?.getBoundingClientRect();
-			if (!editorRect) return;
-			const scrollLeft = editorRect.left - parentRect.left;
-			const scrollTop = editorRect.top - parentRect.top;
-			editorElement?.scrollTo({ left: scrollLeft, top: scrollTop, behavior: 'smooth' });
-		}, 20);
 	}
 
 	async function init() {
@@ -281,16 +304,8 @@
 	}
 
 	function registerEventListeners() {
-		let unlistenFocusFn: () => void;
 		let unlistenReloadFn: () => void;
 		let unwatchFileChange: () => void;
-		listen<{ id: string }>('focus-tab', ({ payload }) => {
-			if (payload.id === tab.id) {
-				focusHandler();
-			}
-		}).then((unlisten) => {
-			unlistenFocusFn = unlisten;
-		});
 		listen<{ id: string }>('reload-editor', () => {
 			editor?.dispose();
 			init().then((disposeFn) => {
@@ -335,7 +350,6 @@
 			});
 		});
 		return () => {
-			unlistenFocusFn?.();
 			unlistenReloadFn?.();
 			unwatchFileChange?.();
 		};
@@ -346,6 +360,11 @@
 		init().then((disposeFn) => {
 			disposeEditor = disposeFn;
 			unregisterEventListenersFn = registerEventListeners();
+			console.log('mnt', tab, workspaceStore.currentTabId);
+			if (tab.id === workspaceStore.currentTabId) {
+				focusHandler();
+				emit('scroll-to-tab', { tabId: tab.id });
+			}
 		});
 		return () => {
 			// Clear any pending save timeout
@@ -366,7 +385,12 @@
 		isFocused ? 'bg-primary' : 'bg-base-300 dark:bg-base-100'
 	)}
 >
-	<div class={clsx('group flex items-center justify-between', isFocused && 'text-primary-content')}>
+	<div
+		class={clsx('group flex items-center justify-between', isFocused && 'text-primary-content')}
+		oncontextmenu={createContextMenu}
+		role="tab"
+		tabindex={0}
+	>
 		<div class="flex gap-1 items-center px-2">
 			{#if tab.external}
 				<div

@@ -56,11 +56,15 @@
 			onClick: () => appStore.toggleCommandMenu(),
 			icon: SearchIcon as never
 		},
-		{
-			active: workspaceStore.chatVisible,
-			onClick: () => workspaceStore.toggleChat(),
-			icon: MessageCircleIcon as never
-		},
+		...(workspaceStore.rootDir
+			? [
+					{
+						active: workspaceStore.chatVisible,
+						onClick: () => workspaceStore.toggleChat(),
+						icon: MessageCircleIcon as never
+					}
+				]
+			: []),
 		{
 			active: false,
 			onClick: () => workspaceStore.openSettings(),
@@ -85,12 +89,14 @@
 		{#if workspaceStore.currentTabId}
 			<SegmentControl actions={leftSegmentActions} />
 		{/if}
-		{#if projectName}
-			<button class="btn btn-xs" onclick={() => workspaceStore.selectRootDir()}>
-				<FolderIcon size={16} />
-				{projectName}
-			</button>
-		{/if}
+		<button class="btn btn-xs" onclick={() => workspaceStore.selectRootDir()}>
+			<FolderIcon size={16} />
+			{#if projectName}
+				<span class="truncate">{projectName}</span>
+			{:else}
+				<span class="truncate">Open Project</span>
+			{/if}
+		</button>
 	</div>
 	<div class="flex gap-1">
 		{#if appStore.configDirty}

@@ -2,23 +2,24 @@
 	import { shortcut } from '@svelte-put/shortcut';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import EditorTab from '$lib/components/editor-tab.svelte';
-	import { workspaceStore } from '$lib/store/workspace.svelte';
+	import { workspaceStore, type Tab } from '$lib/store/workspace.svelte';
 	import { appStore } from '$lib/store/app.svelte';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
-	import { emit } from '@tauri-apps/api/event';
+	import { listen } from '@tauri-apps/api/event';
 	import Chat from '$lib/components/chat.svelte';
 	import { editorStore } from '$lib/store/editor.svelte';
+	import type { ScrollToIndexAlign } from 'virtua';
 	import { Virtualizer } from 'virtua/svelte';
-	import clsx from 'clsx';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { PaneGroup, Pane, PaneResizer } from 'paneforge';
-	import { ScrollArea } from 'bits-ui';
 	import TabExplorer from '$lib/components/tab-explorer.svelte';
-	import { watch } from 'runed';
+	import { watch, ElementSize } from 'runed';
+	import { match } from 'ts-pattern';
+	import clsx from 'clsx';
 
+	let virtualizer = $state<Virtualizer<any>>();
 	const currentRowId = $derived(page.params.rowId);
-	const currentTabId = $derived(page.url.searchParams.get('tabId'));
 	let innerWidth = $state(0);
 	const tabIds = $derived(
 		workspaceStore.findRowById(currentRowId)?.tabIds ?? new SvelteSet<string>()
@@ -28,9 +29,14 @@
 			.map((tabId) => workspaceStore.findTabById(tabId))
 			.filter((tab) => tab !== undefined)
 	);
+	const viewportSize = new ElementSize(
+		() => document.querySelector('[data-scroll-container]') as HTMLElement
+	);
+
 	async function openFilePicker() {
 		if (!workspaceStore.rootDir) return;
 		const files = await open({
+			defaultPath: workspaceStore.rootDir,
 			multiple: true,
 			directory: false
 		});
@@ -44,6 +50,14 @@
 				workspaceStore.addTab({ rowId: currentRowId, filePath, external: true });
 			}
 		}
+	}
+
+	function getTabSize(tab: Tab) {
+		return match(tab.size)
+			.with('sm', () => viewportSize.width * 0.5 - 4)
+			.with('md', () => viewportSize.width * 0.75 - 4)
+			.with('lg', () => viewportSize.width - 6)
+			.exhaustive();
 	}
 
 	function getBreakpointValue<T extends number | string>({
@@ -63,45 +77,53 @@
 		return xl;
 	}
 
-	watch(
-		() => currentTabId,
-		(tabId) => {
-			if (!tabId) return;
-			const tab = workspaceStore.findTabById(tabId);
-			if (!tab) return;
-			workspaceStore.setCurrentRowId(tab.rowId);
-			workspaceStore.setCurrentTabId(tabId);
-			emit('focus-tab', { id: tabId });
-		}
-	);
+	function scrollToTab(tabId: string) {
+		const tabIndex = tabs.findIndex((tab) => tab.id === tabId);
+		if (tabIndex === -1) return;
+		const align = match(tabIndex)
+			.with(0, () => 'start')
+			.with(tabs.length - 1, () => 'end')
+			.otherwise(() => 'center');
+		virtualizer?.scrollToIndex(tabIndex, {
+			align: align as ScrollToIndexAlign,
+			smooth: true
+		});
+	}
 
 	watch(
 		() => tabs.length,
 		(length) => {
-			if (length === 0) {
-				workspaceStore.setCurrentTabId(undefined);
-				appStore.setCommandMenuOpen(true);
-			}
+			if (length !== 0) return;
+			workspaceStore.setCurrentTabId(undefined);
+			appStore.setCommandMenuOpen(true);
 		}
 	);
 
 	onMount(() => {
+		let unlistenScrollToTab: () => void;
 		workspaceStore.setChatVisible(false);
 		workspaceStore.setCurrentRowId(currentRowId);
 		if (!workspaceStore.currentTabId) {
 			workspaceStore.setCurrentTabId(Array.from(tabIds)[0]);
 		}
-		editorStore.loadEditor().then(() => {
-			setTimeout(() => {
-				emit('focus-tab', { id: workspaceStore.currentTabId });
-			}, 100);
+		editorStore.loadEditor();
+		listen<{ tabId: string }>('scroll-to-tab', ({ payload }) => {
+			scrollToTab(payload.tabId);
+		}).then((unlisten) => {
+			unlistenScrollToTab = unlisten;
 		});
 		editorStore.setupCopilot();
+		return () => {
+			unlistenScrollToTab?.();
+		};
+	});
+
+	$effect(() => {
+		console.log(viewportSize);
 	});
 </script>
 
 <svelte:window
-	bind:innerWidth
 	use:shortcut={{
 		trigger: [
 			{
@@ -153,7 +175,7 @@
 <PaneGroup direction="horizontal" class="mt-8 bg-base-200">
 	{#if workspaceStore.explorerVisible}
 		<Pane
-			defaultSize={getBreakpointValue({ sm: 1 / 3, md: 1 / 4, lg: 1 / 6, xl: 1 / 8 })}
+			defaultSize={getBreakpointValue({ sm: 1 / 4, md: 1 / 5, lg: 1 / 6, xl: 1 / 8 })}
 			minSize={10}
 			maxSize={50}
 			class="flex flex-col h-full pl-1 pb-1"
@@ -163,35 +185,36 @@
 		</Pane>
 		<PaneResizer class="h-full w-1 cursor-col-resize" />
 	{/if}
-	<Pane defaultSize={1 / 2} order={2}>
+	<Pane
+		data-scroll-container
+		defaultSize={1 / 2}
+		order={2}
+		class={clsx(
+			'!overflow-x-auto overscroll-x-none rounded-lg border-2 border-base-300 mb-1',
+			workspaceStore.explorerVisible ? 'ml-0' : 'ml-1',
+			workspaceStore.chatVisible ? 'mr-0' : 'mr-1'
+		)}
+	>
 		{#if tabs.length > 0}
-			<ScrollArea.Root
-				class={clsx(
-					'relative h-full w-full overflow-hidden pb-1',
-					workspaceStore.chatVisible ? 'pr-0' : 'pr-1',
-					workspaceStore.explorerVisible ? 'pl-0' : 'pl-1'
-				)}
+			<Virtualizer
+				data={tabs}
+				getKey={(tab) => tab.id}
+				itemSize={506}
+				horizontal
+				bind:this={virtualizer}
 			>
-				<ScrollArea.Viewport
-					class="rounded-lg border-2 border-base-300 w-full h-full !overflow-x-auto overscroll-none"
-				>
-					{#if editorStore.monacoReady}
-						<Virtualizer data={tabs} getKey={(tab, index) => tab?.id ?? index} horizontal>
-							{#snippet children(tab)}
-								<div
-									class={clsx('h-full flex flex-col')}
-									data-tab-id={tab.id}
-									style={tabs.length > 1
-										? `width: calc(${innerWidth * 0.5}px - 6px);`
-										: `width: calc(${innerWidth}px - 0.5rem);`}
-								>
-									<EditorTab {tab} />
-								</div>
-							{/snippet}
-						</Virtualizer>
-					{/if}
-				</ScrollArea.Viewport>
-			</ScrollArea.Root>
+				{#snippet children(tab)}
+					<div
+						class="h-full flex flex-col"
+						data-tab-id={tab.id}
+						style:width={`${getTabSize(tab)}px`}
+					>
+						{#if editorStore.monacoReady}
+							<EditorTab {tab} />
+						{/if}
+					</div>
+				{/snippet}
+			</Virtualizer>
 		{:else}
 			<div class="flex flex-col h-full w-full justify-center items-center">
 				<p>No tabs</p>
@@ -201,7 +224,7 @@
 	{#if workspaceStore.chatVisible}
 		<PaneResizer class="h-full w-1 cursor-col-resize" />
 		<Pane
-			defaultSize={getBreakpointValue({ sm: 1 / 3, md: 1 / 4, lg: 1 / 6, xl: 1 / 8 })}
+			defaultSize={getBreakpointValue({ sm: 1 / 4, md: 1 / 5, lg: 1 / 6, xl: 1 / 8 })}
 			minSize={10}
 			maxSize={50}
 			class="flex flex-col h-full pr-1 pb-1"

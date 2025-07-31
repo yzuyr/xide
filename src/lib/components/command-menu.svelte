@@ -6,7 +6,7 @@
 	import { matchSorter } from 'match-sorter';
 	import clsx from 'clsx';
 	import { watch, resource } from 'runed';
-	import { match } from 'ts-pattern';
+	import { match, P } from 'ts-pattern';
 	import CodeHighlighter from './code-highlighter.svelte';
 	import { join } from '@tauri-apps/api/path';
 	import { exists, mkdir, readDir, readTextFile, stat, writeTextFile } from '@tauri-apps/plugin-fs';
@@ -105,12 +105,12 @@
 		return match(command)
 			.with({ type: 'file' }, ({ value }) => {
 				if (!workspaceStore.currentRowId) return;
-				const tabId = workspaceStore.addTab({
+				workspaceStore.addTab({
 					rowId: workspaceStore.currentRowId,
 					filePath: value
 				});
 				appStore.setCommandMenuOpen(false);
-				return goto(`/rows/${workspaceStore.currentRowId}?tabId=${tabId}`);
+				return goto(`/rows/${workspaceStore.currentRowId}`);
 			})
 			.with({ type: 'directory' }, async ({ value }) => {
 				if (!workspaceStore.currentRowId) return;
@@ -252,15 +252,20 @@
 	}
 
 	function handleKeyDown(event: KeyboardEvent) {
-		if (event.key === 'Escape') {
-			return appStore.setCommandMenuOpen(false);
-		}
-		if (event.key === 'ArrowDown') {
-			return commandDown();
-		}
-		if (event.key === 'ArrowUp') {
-			return commandUp();
-		}
+		return match(event)
+			.with({ key: 'Escape' }, () => {
+				event.preventDefault();
+				return appStore.setCommandMenuOpen(false);
+			})
+			.with(P.union({ key: 'ArrowDown' }, { key: 'k', ctrlKey: true }), () => {
+				event.preventDefault();
+				return commandDown();
+			})
+			.with(P.union({ key: 'ArrowUp' }, { key: 'i', ctrlKey: true }), () => {
+				event.preventDefault();
+				return commandUp();
+			})
+			.otherwise(() => {});
 	}
 
 	watch(
@@ -338,7 +343,7 @@
 				{:else if panelResource.current?.type === 'directory'}
 					<ul class="menu bg-base-100 w-full">
 						{#each panelResource.current?.data ?? [] as file}
-							<li><a><FileIcon size={16} /><span class="truncate">{file}</span></a></li>
+							<li><button><FileIcon size={16} /><span class="truncate">{file}</span></button></li>
 						{/each}
 					</ul>
 				{/if}

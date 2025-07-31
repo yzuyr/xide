@@ -7,13 +7,17 @@ import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
 import fastIgnore from 'fast-ignore';
 import { getConfigPath } from './config.svelte';
 import { SvelteSet, SvelteMap } from 'svelte/reactivity';
+import z from 'zod';
 
-export type Tab = {
-	id: string;
-	rowId: string;
-	filePath: string;
-	external: boolean;
-};
+export const TabSchema = z.object({
+	id: z.uuid().default(() =>crypto.randomUUID()),
+	rowId: z.string(),
+	filePath: z.string(),
+	external: z.boolean().default(false),
+	size: z.enum(['sm', 'md', 'lg']).default('md')
+});
+
+export type Tab = z.infer<typeof TabSchema>;
 
 export type Row = {
 	id: string;
@@ -116,7 +120,6 @@ class WorkspaceStore {
 		filePath: string;
 		external?: boolean;
 	}) {
-		const id = crypto.randomUUID();
 		let rowIndex = this.rows.findIndex((row) => row.id === rowId);
 		if (rowIndex === -1) {
 			const newRow = this.addRow();
@@ -124,10 +127,11 @@ class WorkspaceStore {
 			rowIndex = this.rows.length - 1;
 			this.setCurrentRowId(rowId);
 		}
-		this.rows[rowIndex].tabIds.add(id);
-		this.tabs.set(id, { id, rowId, filePath, external });
-		this.currentTabId = id;
-		return id;
+		const newTab = TabSchema.parse({ rowId, filePath, external });
+		this.tabs.set(newTab.id, newTab);
+		this.rows[rowIndex].tabIds.add(newTab.id);
+		this.setCurrentTabId(newTab.id);
+		return newTab.id;
 	}
 
 	removeTab({ tabId }: { tabId: string }) {
@@ -165,10 +169,10 @@ class WorkspaceStore {
 		const currentTabIndex = Array.from(row.tabIds).findIndex((id) => id === tabId);
 		const nextTabIndex = currentTabIndex + 1;
 		if (row.tabIds.size > nextTabIndex) {
-			return emit('focus-tab', { id: Array.from(row.tabIds)[nextTabIndex] });
+			return this.setCurrentTabId(Array.from(row.tabIds)[nextTabIndex]);
 		}
 		const firstTabId = Array.from(row.tabIds)[0];
-		return emit('focus-tab', { id: firstTabId });
+		return this.setCurrentTabId(firstTabId);
 	}
 
 	prevTab({ tabId }: { tabId: string }) {
@@ -179,10 +183,10 @@ class WorkspaceStore {
 		const currentTabIndex = Array.from(row.tabIds).findIndex((id) => id === tabId);
 		const prevTabIndex = currentTabIndex - 1;
 		if (prevTabIndex >= 0) {
-			return emit('focus-tab', { id: Array.from(row.tabIds)[prevTabIndex] });
+			return this.setCurrentTabId(Array.from(row.tabIds)[prevTabIndex]);
 		}
 		const lastTabId = Array.from(row.tabIds)[row.tabIds.size - 1];
-		return emit('focus-tab', { id: lastTabId });
+		return this.setCurrentTabId(lastTabId);
 	}
 
 	async nextRow() {
@@ -205,7 +209,7 @@ class WorkspaceStore {
 		// Focus the tab after navigation
 		if (targetRow.tabIds.size > 0) {
 			const firstTabId = Array.from(targetRow.tabIds)[0];
-			return emit('focus-tab', { id: firstTabId });
+			return this.setCurrentTabId(firstTabId);
 		}
 	}
 
@@ -231,7 +235,7 @@ class WorkspaceStore {
 		// Focus the tab after navigation
 		if (targetRow.tabIds.size > 0) {
 			const firstTabId = Array.from(targetRow.tabIds)[0];
-			return emit('focus-tab', { id: firstTabId });
+			return this.setCurrentTabId(firstTabId);
 		}
 	}
 
@@ -253,11 +257,9 @@ class WorkspaceStore {
 			const lastRow = currentRowIndex >= 0 ? this.rows[currentRowIndex] : this.rows[0];
 			const tabId = this.addTab({ rowId: lastRow.id, filePath: settingsPath, external: true });
 			this.setCurrentTabId(tabId);
-			await emit('focus-tab', { id: tabId });
 			return goto(`/rows/${lastRow.id}`);
 		}
 		this.setCurrentTabId(settingsTab.id);
-		await emit('focus-tab', { id: settingsTab.id });
 		return goto(`/rows/${settingsTab.rowId}`);
 	}
 

@@ -16,6 +16,7 @@ import { readTextFile, readDir } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import JSON5 from 'json5';
 import { convertCompilerOptionsFromJson } from 'typescript';
+import { goto } from '$app/navigation';
 
 interface TypeDefinition {
 	content: string;
@@ -264,7 +265,6 @@ class EditorStore {
 
 	async loadEditor() {
 		this.monacoReady = false;
-		if (!workspaceStore.rootDir) return;
 
 		const highlighterResult = await ResultAsync.fromPromise(
 			createHighlighter({
@@ -298,12 +298,29 @@ class EditorStore {
 
 		// Register editor opener
 		monaco.editor.registerEditorOpener({
-			openCodeEditor(_source, resource, _selectionOrPosition) {
+			async openCodeEditor(_source, resource, selectionOrPosition) {
+				console.log('openCodeEditor', resource, selectionOrPosition);
 				if (!workspaceStore.currentRowId) return false;
-				workspaceStore.addTab({
+				const tabId = workspaceStore.addTab({
 					rowId: workspaceStore.currentRowId,
 					filePath: resource.path.substring(1)
 				});
+				const position = match(selectionOrPosition)
+					.with(P.instanceOf(monaco.Position), (position) => ({
+						lineNumber: position.lineNumber,
+						column: position.column
+					}))
+					.with(P.instanceOf(monaco.Range), (range) => ({
+						lineNumber: range.startLineNumber,
+						column: range.startColumn
+					}))
+					.otherwise(() => ({ lineNumber: 1, column: 1 }));
+				workspaceStore.setCurrentTabId(tabId);
+				const searchParams = new URLSearchParams();
+				searchParams.set('position', JSON.stringify(position));
+				await goto(
+					`/rows/${workspaceStore.currentRowId}?${searchParams.toString()}`
+				);
 				return true;
 			}
 		});

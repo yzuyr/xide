@@ -90,14 +90,14 @@
 			const currentRow = workspaceStore.findRowById(workspaceStore.currentRowId);
 			if (!currentRow) return;
 			const lastTabIndex = currentRow.tabIds.size - 1;
-			return emit('focus-tab', { id: Array.from(currentRow.tabIds)[lastTabIndex] });
+			return workspaceStore.setCurrentTabId(Array.from(currentRow.tabIds)[lastTabIndex]);
 		}
 		if (event.key === 'l' && event.ctrlKey) {
 			event.preventDefault();
 			if (!workspaceStore.currentRowId) return;
 			const currentRow = workspaceStore.findRowById(workspaceStore.currentRowId);
 			if (!currentRow) return;
-			return emit('focus-tab', { id: Array.from(currentRow.tabIds)[0] });
+			return workspaceStore.setCurrentTabId(Array.from(currentRow.tabIds)[0]);
 		}
 		if (event.key === 'i' && event.metaKey) {
 			event.preventDefault();
@@ -105,7 +105,6 @@
 			if (!workspaceStore.currentRowId) return;
 			const currentRow = workspaceStore.findRowById(workspaceStore.currentRowId);
 			if (!currentRow) return;
-			return emit('focus-tab', { id: workspaceStore.currentTabId });
 		}
 	}
 
