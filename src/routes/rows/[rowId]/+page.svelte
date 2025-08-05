@@ -16,7 +16,7 @@
 	import TabExplorer from '$lib/components/tab-explorer.svelte';
 	import { watch, ElementSize } from 'runed';
 	import { match } from 'ts-pattern';
-	import clsx from 'clsx';
+	import NavigationBar from '$lib/components/navigation-bar.svelte';
 
 	let virtualizer = $state<Virtualizer<any>>();
 	const currentRowId = $derived(page.params.rowId);
@@ -54,9 +54,9 @@
 
 	function getTabSize(tab: Tab) {
 		return match(tab.size)
-			.with('sm', () => viewportSize.width * 0.5 - 4)
-			.with('md', () => viewportSize.width * 0.75 - 4)
-			.with('lg', () => viewportSize.width - 6)
+			.with('sm', () => viewportSize.width * 0.5)
+			.with('md', () => viewportSize.width * 0.75)
+			.with('lg', () => viewportSize.width)
 			.exhaustive();
 	}
 
@@ -80,31 +80,27 @@
 	function scrollToTab(tabId: string) {
 		const tabIndex = tabs.findIndex((tab) => tab.id === tabId);
 		if (tabIndex === -1) return;
+
 		const align = match(tabIndex)
 			.with(0, () => 'start')
 			.with(tabs.length - 1, () => 'end')
 			.otherwise(() => 'center');
-		virtualizer?.scrollToIndex(tabIndex, {
-			align: align as ScrollToIndexAlign,
-			smooth: true
+
+		// Use requestAnimationFrame to ensure smooth scrolling
+		requestAnimationFrame(() => {
+			virtualizer?.scrollToIndex(tabIndex, {
+				align: align as ScrollToIndexAlign,
+				smooth: true
+			});
 		});
 	}
-
-	watch(
-		() => tabs.length,
-		(length) => {
-			if (length !== 0) return;
-			workspaceStore.setCurrentTabId(undefined);
-			appStore.setCommandMenuOpen(true);
-		}
-	);
 
 	onMount(() => {
 		let unlistenScrollToTab: () => void;
 		workspaceStore.setChatVisible(false);
 		workspaceStore.setCurrentRowId(currentRowId);
 		if (!workspaceStore.currentTabId) {
-			workspaceStore.setCurrentTabId(Array.from(tabIds)[0]);
+			workspaceStore.setCurrentTabId(Array.from(tabIds)[0], false);
 		}
 		editorStore.loadEditor();
 		listen<{ tabId: string }>('scroll-to-tab', ({ payload }) => {
@@ -116,10 +112,6 @@
 		return () => {
 			unlistenScrollToTab?.();
 		};
-	});
-
-	$effect(() => {
-		console.log(viewportSize);
 	});
 </script>
 
@@ -159,6 +151,14 @@
 				preventDefault: true
 			},
 			{
+				key: 'i',
+				modifier: ['meta'],
+				callback: () => {
+					workspaceStore.toggleChat();
+				},
+				preventDefault: true
+			},
+			{
 				key: 'w',
 				modifier: ['meta'],
 				callback: () => {
@@ -170,64 +170,61 @@
 			}
 		]
 	}}
+	bind:innerWidth
 />
 
-<PaneGroup direction="horizontal" class="mt-8 bg-base-200">
+<PaneGroup direction="horizontal" class="bg-base-200">
 	{#if workspaceStore.explorerVisible}
 		<Pane
-			defaultSize={getBreakpointValue({ sm: 1 / 4, md: 1 / 5, lg: 1 / 6, xl: 1 / 8 })}
+			defaultSize={getBreakpointValue({ sm: 1 / 3, md: 1 / 4, lg: 1 / 5, xl: 1 / 6 })}
 			minSize={10}
 			maxSize={50}
-			class="flex flex-col h-full pl-1 pb-1"
+			class="flex flex-col h-full"
 			order={1}
 		>
 			<TabExplorer />
 		</Pane>
-		<PaneResizer class="h-full w-1 cursor-col-resize" />
+		<PaneResizer class="h-full w-[2px] bg-base-300 cursor-col-resize" />
 	{/if}
-	<Pane
-		data-scroll-container
-		defaultSize={1 / 2}
-		order={2}
-		class={clsx(
-			'!overflow-x-auto overscroll-x-none rounded-lg border-2 border-base-300 mb-1',
-			workspaceStore.explorerVisible ? 'ml-0' : 'ml-1',
-			workspaceStore.chatVisible ? 'mr-0' : 'mr-1'
-		)}
-	>
-		{#if tabs.length > 0}
-			<Virtualizer
-				data={tabs}
-				getKey={(tab) => tab.id}
-				itemSize={506}
-				horizontal
-				bind:this={virtualizer}
-			>
-				{#snippet children(tab)}
-					<div
-						class="h-full flex flex-col"
-						data-tab-id={tab.id}
-						style:width={`${getTabSize(tab)}px`}
+	<Pane data-scroll-container defaultSize={1 / 2} order={2} class="rounded-lg bg-base-100">
+		<div class="flex flex-col h-full w-full">
+			<NavigationBar />
+			<div class="flex-1 overflow-x-auto overscroll-x-none">
+				{#if tabs.length > 0}
+					<Virtualizer
+						data={tabs}
+						getKey={(tab) => tab.id}
+						itemSize={506}
+						horizontal
+						bind:this={virtualizer}
 					>
-						{#if editorStore.monacoReady}
-							<EditorTab {tab} />
-						{/if}
+						{#snippet children(tab)}
+							<div
+								class="h-full flex flex-col"
+								data-tab-id={tab.id}
+								style:width={tabs.length === 1 ? `${viewportSize.width}px` : `${getTabSize(tab)}px`}
+							>
+								{#if editorStore.monacoReady}
+									<EditorTab {tab} />
+								{/if}
+							</div>
+						{/snippet}
+					</Virtualizer>
+				{:else}
+					<div class="flex flex-col h-full w-full justify-center items-center">
+						<p>No tabs</p>
 					</div>
-				{/snippet}
-			</Virtualizer>
-		{:else}
-			<div class="flex flex-col h-full w-full justify-center items-center">
-				<p>No tabs</p>
+				{/if}
 			</div>
-		{/if}
+		</div>
 	</Pane>
 	{#if workspaceStore.chatVisible}
-		<PaneResizer class="h-full w-1 cursor-col-resize" />
+		<PaneResizer class="h-full w-[2px] bg-base-300 cursor-col-resize" />
 		<Pane
-			defaultSize={getBreakpointValue({ sm: 1 / 4, md: 1 / 5, lg: 1 / 6, xl: 1 / 8 })}
+			defaultSize={getBreakpointValue({ sm: 1 / 3, md: 1 / 4, lg: 1 / 5, xl: 1 / 6 })}
 			minSize={10}
 			maxSize={50}
-			class="flex flex-col h-full pr-1 pb-1"
+			class="flex flex-col h-full"
 			order={3}
 		>
 			<Chat />

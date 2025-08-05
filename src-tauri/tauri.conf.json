@@ -14,8 +14,12 @@
       {
         "title": "Xide",
         "width": 1024,
-        "height": 768,
+        "height": 680,
         "titleBarStyle": "Overlay",
+        "trafficLightPosition": {
+          "x": 12,
+          "y": 14
+        },
         "hiddenTitle": true
       }
     ],

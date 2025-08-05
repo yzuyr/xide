@@ -9,12 +9,22 @@ import { getConfigPath } from './config.svelte';
 import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 import z from 'zod';
 
+const TAB_SIZE = ['sm', 'md', 'lg'] as const;
+
+export const PositionSchema = z.object({
+	lineNumber: z.number(),
+	column: z.number()
+});
+
+export type Position = z.infer<typeof PositionSchema>;
+
 export const TabSchema = z.object({
-	id: z.uuid().default(() =>crypto.randomUUID()),
+	id: z.uuid().default(() => crypto.randomUUID()),
 	rowId: z.string(),
 	filePath: z.string(),
 	external: z.boolean().default(false),
-	size: z.enum(['sm', 'md', 'lg']).default('md')
+	size: z.enum(TAB_SIZE).default('md'),
+	initialPosition: PositionSchema.default({ lineNumber: 0, column: 0 }).optional()
 });
 
 export type Tab = z.infer<typeof TabSchema>;
@@ -77,13 +87,23 @@ class WorkspaceStore {
 	toggleChat() {
 		this.setChatVisible(!this.chatVisible);
 		if (!this.chatVisible) return;
-		setTimeout(() => {
-			emit('focus-chat');
-		}, 100);
+		emit('focus-chat');
 	}
 
-	setCurrentTabId(tabId: string | undefined) {
+	setCurrentTabId(tabId: string | undefined, shouldScroll: boolean = true) {
 		this.currentTabId = tabId;
+		// Emit scroll event when tab changes, but only if explicitly requested
+		if (tabId && shouldScroll) {
+			emit('scroll-to-tab', { tabId });
+		}
+	}
+
+	toggleTabSize(tabId: string) {
+		const tab = this.findTabById(tabId);
+		if (!tab) return;
+		const currentSize = tab.size;
+		const nextSize = TAB_SIZE[TAB_SIZE.indexOf(currentSize) + 1] ?? TAB_SIZE[0];
+		this.tabs.set(tabId, { ...tab, size: nextSize });
 	}
 
 	setCurrentRowId(rowId: string) {
@@ -104,6 +124,9 @@ class WorkspaceStore {
 
 	removeRow(rowId: string) {
 		this.rows = this.rows.filter((row) => row.id !== rowId);
+		if (this.rows.length === 0) {
+			this.setCurrentTabId(undefined, false);
+		}
 	}
 
 	addRow() {
@@ -114,11 +137,13 @@ class WorkspaceStore {
 	addTab({
 		rowId,
 		filePath,
-		external = false
+		external = false,
+		initialPosition
 	}: {
 		rowId: string;
 		filePath: string;
 		external?: boolean;
+		initialPosition?: Position;
 	}) {
 		let rowIndex = this.rows.findIndex((row) => row.id === rowId);
 		if (rowIndex === -1) {
@@ -127,7 +152,7 @@ class WorkspaceStore {
 			rowIndex = this.rows.length - 1;
 			this.setCurrentRowId(rowId);
 		}
-		const newTab = TabSchema.parse({ rowId, filePath, external });
+		const newTab = TabSchema.parse({ rowId, filePath, external, initialPosition });
 		this.tabs.set(newTab.id, newTab);
 		this.rows[rowIndex].tabIds.add(newTab.id);
 		this.setCurrentTabId(newTab.id);
@@ -149,14 +174,6 @@ class WorkspaceStore {
 			} else {
 				// No more tabs in this row, clear currentTabId
 				this.setCurrentTabId(undefined);
-			}
-		}
-		if (this.rows[rowIndex].tabIds.size === 0) {
-			this.removeRow(tab.rowId);
-			// If no rows left, create a new one
-			if (this.rows.length === 0) {
-				const newRow = this.addRow();
-				this.setCurrentRowId(newRow.id);
 			}
 		}
 	}
@@ -244,7 +261,7 @@ class WorkspaceStore {
 			multiple: false,
 			directory: true
 		});
-		if (!dir) return;
+		if (!dir) throw new Error('No directory selected');
 		this.reset();
 		this.setRootDir(dir);
 	}
@@ -256,6 +273,7 @@ class WorkspaceStore {
 			const currentRowIndex = this.rows.findIndex((row) => row.id === this.currentRowId);
 			const lastRow = currentRowIndex >= 0 ? this.rows[currentRowIndex] : this.rows[0];
 			const tabId = this.addTab({ rowId: lastRow.id, filePath: settingsPath, external: true });
+			this.setCurrentRowId(lastRow.id);
 			this.setCurrentTabId(tabId);
 			return goto(`/rows/${lastRow.id}`);
 		}

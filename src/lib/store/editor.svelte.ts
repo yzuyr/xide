@@ -17,6 +17,16 @@ import { join } from '@tauri-apps/api/path';
 import JSON5 from 'json5';
 import { convertCompilerOptionsFromJson } from 'typescript';
 import { goto } from '$app/navigation';
+import z from 'zod';
+
+export const RangeSchema = z.object({
+	startLineNumber: z.number(),
+	startColumn: z.number(),
+	endLineNumber: z.number(),
+	endColumn: z.number()
+});
+
+export type Range = z.infer<typeof RangeSchema>;
 
 interface TypeDefinition {
 	content: string;
@@ -299,12 +309,7 @@ class EditorStore {
 		// Register editor opener
 		monaco.editor.registerEditorOpener({
 			async openCodeEditor(_source, resource, selectionOrPosition) {
-				console.log('openCodeEditor', resource, selectionOrPosition);
 				if (!workspaceStore.currentRowId) return false;
-				const tabId = workspaceStore.addTab({
-					rowId: workspaceStore.currentRowId,
-					filePath: resource.path.substring(1)
-				});
 				const position = match(selectionOrPosition)
 					.with(P.instanceOf(monaco.Position), (position) => ({
 						lineNumber: position.lineNumber,
@@ -315,12 +320,13 @@ class EditorStore {
 						column: range.startColumn
 					}))
 					.otherwise(() => ({ lineNumber: 1, column: 1 }));
+				const tabId = workspaceStore.addTab({
+					rowId: workspaceStore.currentRowId,
+					filePath: resource.path.substring(1),
+					initialPosition: position
+				});
 				workspaceStore.setCurrentTabId(tabId);
-				const searchParams = new URLSearchParams();
-				searchParams.set('position', JSON.stringify(position));
-				await goto(
-					`/rows/${workspaceStore.currentRowId}?${searchParams.toString()}`
-				);
+				await goto(`/rows/${workspaceStore.currentRowId}`);
 				return true;
 			}
 		});
@@ -339,6 +345,24 @@ class EditorStore {
 		}
 
 		this.monacoReady = true;
+	}
+
+	search(query: string) {
+		const models = monaco.editor.getModels();
+		return models.flatMap((model) => {
+			const results = [];
+			const matches = model.findMatches(query, false, false, false, null, true);
+			for (const match of matches) {
+				const path = model.uri.toString().substring(8);
+				if (path === 'lib.dom.d.ts') continue;
+				if (path.startsWith('node_modules/')) continue;
+				results.push({
+					path,
+					range: match.range
+				});
+			}
+			return results;
+		});
 	}
 }
 

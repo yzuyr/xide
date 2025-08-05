@@ -13,6 +13,7 @@
 	import { configStore } from '$lib/store/config.svelte';
 	import { emit } from '@tauri-apps/api/event';
 	import SegmentControl from './segment-control.svelte';
+	import clsx from 'clsx';
 
 	const rowIndex = $derived(
 		workspaceStore.currentRowId
@@ -38,7 +39,7 @@
 		{
 			active: workspaceStore.explorerVisible,
 			onClick: () => workspaceStore.toggleExplorer(),
-			label: `${rowIndex >= 0 ? rowIndex : '?'}/${tabIndex >= 0 ? tabIndex : '?'}`,
+			label: `${rowIndex >= 0 ? rowIndex : 0}/${tabIndex >= 0 ? tabIndex : 0}`,
 			icon: PanelLeftIcon as never
 		},
 		{
@@ -64,12 +65,7 @@
 						icon: MessageCircleIcon as never
 					}
 				]
-			: []),
-		{
-			active: false,
-			onClick: () => workspaceStore.openSettings(),
-			icon: CogIcon as never
-		}
+			: [])
 	]);
 
 	const projectName = $derived(workspaceStore.rootDir?.split('/').pop());
@@ -82,21 +78,20 @@
 </script>
 
 <div
-	class="flex p-2 h-8 fixed top-0 left-0 right-0 z-10 bg-base-200 pl-20 items-center justify-between"
+	class={clsx(
+		'flex px-2 py-4 h-8 bg-base-200 items-center justify-between border-b-2 border-base-300',
+		!workspaceStore.explorerVisible && 'pl-20'
+	)}
 	data-tauri-drag-region
 >
 	<div class="flex gap-1">
-		{#if workspaceStore.currentTabId}
-			<SegmentControl actions={leftSegmentActions} />
+		<SegmentControl actions={leftSegmentActions} />
+		{#if projectName}
+			<button class="btn btn-xs" onclick={() => workspaceStore.selectRootDir()}>
+				<FolderIcon size={16} />
+				<span class="truncate font-medium">{projectName}</span>
+			</button>
 		{/if}
-		<button class="btn btn-xs" onclick={() => workspaceStore.selectRootDir()}>
-			<FolderIcon size={16} />
-			{#if projectName}
-				<span class="truncate">{projectName}</span>
-			{:else}
-				<span class="truncate">Open Project</span>
-			{/if}
-		</button>
 	</div>
 	<div class="flex gap-1">
 		{#if appStore.configDirty}

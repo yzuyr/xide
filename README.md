@@ -3,6 +3,7 @@
 A modern take on a code editor. Quite opinionated.
 
 ## Features
+
 - **Open-source**: Do what you want with it.
 - **Privacy-focused**: No tracking, no analytics, no cookies.
 - **Scrollable-tiling**: Organize your code in a way that makes sense to you.
@@ -16,6 +17,7 @@ Download the latest release from the [releases page](https://github.com/ryuz/xid
 ## Development
 
 ### Prerequisite
+
 - Rust
 - Bun
 

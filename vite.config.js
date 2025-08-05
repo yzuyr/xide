@@ -53,6 +53,9 @@ export default defineConfig(async () => ({
 		headers: {
 			'Cross-Origin-Embedder-Policy': 'require-corp',
 			'Cross-Origin-Opener-Policy': 'same-origin'
+		},
+		fs: {
+			allow: ['./package.json']
 		}
 	},
 	worker: {

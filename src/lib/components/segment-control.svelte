@@ -12,11 +12,11 @@
 	let { actions }: { actions: Action[] } = $props();
 </script>
 
-<div class="flex items-center bg-base-300 rounded">
+<div class="flex items-center rounded">
 	{#each actions as action}
 		<button
 			class={clsx(
-				'btn border-none shadow-none bg-base-300 btn-xs',
+				'btn border-none shadow-none btn-xs',
 				!action.label && 'btn-square',
 				action.active && 'bg-primary text-primary-content'
 			)}

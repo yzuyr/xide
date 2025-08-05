@@ -12,8 +12,10 @@
 	import { exists, mkdir, readDir, readTextFile, stat, writeTextFile } from '@tauri-apps/plugin-fs';
 	import { GARBAGE_FILES } from '$lib/const';
 	import { goto } from '$app/navigation';
-	import { ChevronRightIcon, FileIcon, FolderIcon } from 'lucide-svelte';
+	import { ChevronRightIcon, DotIcon, FileIcon, FolderIcon, SearchIcon } from 'lucide-svelte';
 	import { trapFocus } from 'trap-focus-svelte';
+	import z from 'zod';
+	import { editorStore, RangeSchema } from '$lib/store/editor.svelte';
 
 	let inputElement = $state<HTMLInputElement>();
 
@@ -28,11 +30,17 @@
 		})
 	);
 
-	type ExecutableCommand = {
-		label: string;
-		type: 'command' | 'file' | 'directory';
-		value: string;
-	};
+	const ExecutableCommandSchema = z.object({
+		label: z.string(),
+		type: z.enum(['command', 'file', 'directory']),
+		value: z.string(),
+		meta: z
+			.object({ opened: z.boolean().default(false), range: RangeSchema.optional() })
+			.default({ opened: false })
+			.optional()
+	});
+
+	type ExecutableCommand = z.infer<typeof ExecutableCommandSchema>;
 
 	const BASE_COMMANDS: ExecutableCommand[] = [
 		{
@@ -57,7 +65,10 @@
 			return {
 				label: file,
 				value: file,
-				type: 'file'
+				type: 'file',
+				meta: {
+					opened: !!workspaceStore.findTabByPath(file)
+				}
 			};
 		})
 	);
@@ -68,6 +79,19 @@
 				label: dir,
 				value: dir,
 				type: 'directory'
+			};
+		})
+	);
+
+	const searchResults = $derived($data.query?.length > 2 ? editorStore.search($data.query) : []);
+
+	const searchCommands: ExecutableCommand[] = $derived(
+		searchResults.map((result) => {
+			return {
+				label: result.path,
+				value: result.path,
+				type: 'file',
+				meta: { opened: false, range: result.range }
 			};
 		})
 	);
@@ -94,6 +118,7 @@
 	);
 
 	const allCommands: ExecutableCommand[] = $derived([
+		...searchCommands,
 		...filteredCommands,
 		...metaCommands,
 		...BASE_COMMANDS
@@ -103,11 +128,18 @@
 
 	async function executeCommand(command: ExecutableCommand) {
 		return match(command)
-			.with({ type: 'file' }, ({ value }) => {
+			.with({ type: 'file' }, ({ value, meta }) => {
 				if (!workspaceStore.currentRowId) return;
+				const initialPosition = meta?.range
+					? {
+							lineNumber: meta.range.startLineNumber,
+							column: meta.range.startColumn
+						}
+					: undefined;
 				workspaceStore.addTab({
 					rowId: workspaceStore.currentRowId,
-					filePath: value
+					filePath: value,
+					initialPosition
 				});
 				appStore.setCommandMenuOpen(false);
 				return goto(`/rows/${workspaceStore.currentRowId}`);
@@ -259,11 +291,11 @@
 			})
 			.with(P.union({ key: 'ArrowDown' }, { key: 'k', ctrlKey: true }), () => {
 				event.preventDefault();
-				return commandDown();
+				commandDown();
 			})
 			.with(P.union({ key: 'ArrowUp' }, { key: 'i', ctrlKey: true }), () => {
 				event.preventDefault();
-				return commandUp();
+				commandUp();
 			})
 			.otherwise(() => {});
 	}
@@ -279,9 +311,6 @@
 		if (!appStore.commandMenuOpen) return;
 		appStore.setCurrentCommandIndex(0);
 		workspaceStore.buildFileList();
-		setTimeout(() => {
-			inputElement?.focus();
-		}, 100);
 	});
 </script>
 
@@ -319,13 +348,20 @@
 									onclick={(event) => event.detail !== 0 && executeCommand(command)}
 								>
 									{#if command.type === 'file'}
-										<FileIcon size={16} />
+										{#if command.meta?.range}
+											<SearchIcon size={16} />
+										{:else}
+											<FileIcon size={16} />
+										{/if}
 									{:else if command.type === 'directory'}
 										<FolderIcon size={16} />
 									{:else if command.type === 'command'}
 										<ChevronRightIcon size={16} />
 									{/if}
-									<span class="truncate">{command.label}</span>
+									<span class="truncate flex-1">{command.label}</span>
+									{#if command.meta?.opened}
+										<DotIcon size={20} />
+									{/if}
 								</button>
 							</li>
 						{/each}
@@ -339,6 +375,7 @@
 					<CodeHighlighter
 						path={activeCommand.value}
 						code={panelResource.current?.data as string}
+						range={activeCommand.meta?.range}
 					/>
 				{:else if panelResource.current?.type === 'directory'}
 					<ul class="menu bg-base-100 w-full">

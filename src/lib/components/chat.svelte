@@ -6,7 +6,7 @@
 	import { marked } from 'marked';
 	import { emit, listen } from '@tauri-apps/api/event';
 	import { workspaceStore } from '$lib/store/workspace.svelte';
-	import { XIcon } from 'lucide-svelte';
+	import { ExternalLinkIcon, XIcon } from 'lucide-svelte';
 
 	let chatId = $state<string>();
 	const chat = $derived(chatsStore.chats.find((chat) => chat.id === chatId));
@@ -99,13 +99,6 @@
 			if (!currentRow) return;
 			return workspaceStore.setCurrentTabId(Array.from(currentRow.tabIds)[0]);
 		}
-		if (event.key === 'i' && event.metaKey) {
-			event.preventDefault();
-			workspaceStore.toggleChat();
-			if (!workspaceStore.currentRowId) return;
-			const currentRow = workspaceStore.findRowById(workspaceStore.currentRowId);
-			if (!currentRow) return;
-		}
 	}
 
 	function onInputFocus() {
@@ -143,40 +136,51 @@
 	});
 </script>
 
-<form use:form bind:this={formElement} class="flex flex-col flex-1 shrink-0 bg-base-200 gap-1">
-	<div class="flex flex-col flex-1 bg-base-100 border-2 border-base-300 rounded-lg">
-		<div class="flex items-center justify-between bg-base-300">
-			<div class="text-sm ml-2">opencode</div>
-			<button type="button" class="btn btn-square btn-ghost btn-xs" onclick={closeChat}>
-				<XIcon size={16} />
-			</button>
-		</div>
-		<div class="flex flex-col p-2">
-			{#each chat?.messages ?? [] as message}
-				{#if message.role === 'user'}
-					<div class="chat chat-end">
-						<div class="chat-bubble text-sm">{message.content}</div>
-					</div>
-				{:else}
-					{@const htmlContent = marked(message.content)}
-					{#if message.content === '.'}
-						<div class="badge badge-success">Done</div>
-					{:else}
-						<div class="prose prose-sm">{@html htmlContent}</div>
-					{/if}
-				{/if}
-			{/each}
-			{#if isRunning}
-				<span class="loading loading-ball"></span>
-			{/if}
-		</div>
+<form use:form bind:this={formElement} class="h-screen flex flex-col flex-1 shrink-0 bg-base-100">
+	<div
+		class="flex items-center justify-between bg-base-200 p-1 border-b-2 border-base-300"
+		data-tauri-drag-region
+	>
+		<a
+			href="https://opencode.ai"
+			target="_blank"
+			rel="noopener noreferrer"
+			class="text-sm ml-2 link flex-1 flex items-center gap-1"
+		>
+			<span>opencode</span>
+			<ExternalLinkIcon size={12} />
+		</a>
+		<button type="button" class="btn btn-square btn-ghost btn-xs" onclick={closeChat}>
+			<XIcon size={16} />
+		</button>
 	</div>
-	<input
-		name="prompt"
-		class="input w-full rounded-lg !outline-none border-2 border-base-300 focus:border-primary"
-		onfocus={onInputFocus}
-		onkeydown={handleKeyDown}
-		placeholder="Plan and build with opencode"
-		bind:this={inputElement}
-	/>
+	<div class="flex flex-1 flex-col p-2 overflow-y-auto">
+		{#each chat?.messages ?? [] as message}
+			{#if message.role === 'user'}
+				<div class="chat chat-end">
+					<div class="chat-bubble text-sm">{message.content}</div>
+				</div>
+			{:else}
+				{@const htmlContent = marked(message.content)}
+				{#if message.content === '.'}
+					<div class="badge badge-success">Done</div>
+				{:else}
+					<div class="prose prose-sm">{@html htmlContent}</div>
+				{/if}
+			{/if}
+		{/each}
+		{#if isRunning}
+			<span class="loading loading-ball"></span>
+		{/if}
+	</div>
+	<div class="px-1 pb-1">
+		<input
+			name="prompt"
+			class="input w-full border-2 border-base-300 focus:border-primary !outline-none rounded-lg"
+			onfocus={onInputFocus}
+			onkeydown={handleKeyDown}
+			placeholder="Plan and build with opencode"
+			bind:this={inputElement}
+		/>
+	</div>
 </form>

@@ -1,6 +1,8 @@
 import { SHIKI_LANGUAGES, SHIKI_THEMES } from '$lib/const';
 import type { Theme } from '@tauri-apps/api/window';
 import { createHighlighter, type Highlighter } from 'shiki';
+import { SvelteSet } from 'svelte/reactivity';
+import { load } from '@tauri-apps/plugin-store';
 
 class AppStore {
 	theme = $state<Theme>('light');
@@ -8,6 +10,17 @@ class AppStore {
 	currentCommandIndex = $state(0);
 	configDirty = $state(false);
 	highlighter = $state<Highlighter>();
+	lastProjectPaths = $state<SvelteSet<string>>(new SvelteSet());
+
+	async restore() {
+		const store = await load('app.json');
+		this.lastProjectPaths = new SvelteSet((await store.get('lastProjectPaths')) ?? []);
+	}
+
+	async persist() {
+		const store = await load('app.json');
+		await store.set('lastProjectPaths', Array.from(this.lastProjectPaths));
+	}
 
 	setCommandMenuOpen(open: boolean) {
 		this.commandMenuOpen = open;
@@ -23,6 +36,10 @@ class AppStore {
 
 	setConfigDirty(dirty: boolean) {
 		this.configDirty = dirty;
+	}
+
+	async addLastProjectPath(path: string) {
+		this.lastProjectPaths.add(path);
 	}
 
 	async setupHighlighter() {

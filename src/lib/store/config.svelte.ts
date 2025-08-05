@@ -7,12 +7,12 @@ import Toml from 'smol-toml';
 import { z } from 'zod';
 
 const CONFIG_INFO = dedent`
-# ██   ██ ██ ██████  ███████ 
-#  ██ ██  ██ ██   ██ ██      
-#   ███   ██ ██   ██ █████   
-#  ██ ██  ██ ██   ██ ██      
-# ██   ██ ██ ██████  ███████ 
-#                                    
+# ██   ██ ██ ██████  ███████
+#  ██ ██  ██ ██   ██ ██
+#   ███   ██ ██   ██ █████
+#  ██ ██  ██ ██   ██ ██
+# ██   ██ ██ ██████  ███████
+#
 # Reference: https://xide.dev/config
 `;
 
@@ -25,9 +25,11 @@ const ConfigSchema = z.object({
 	}),
 	ai: z.object({
 		agent: z.object({
+			enabled: z.boolean().default(true),
 			model: z.string().default('github-copilot/gpt-4.1')
 		}),
 		autocomplete: z.object({
+			enabled: z.boolean().default(true),
 			base_url: z.url().default('https://openrouter.ai/api/v1'),
 			model: z.string().default('mistralai/codestral-2501'),
 			api_key: z.string().default('')

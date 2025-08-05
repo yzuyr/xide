@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import * as Monaco from 'monaco-editor/esm/vs/editor/editor.api';
 	import { emit, listen } from '@tauri-apps/api/event';
 	import { workspaceStore, type Tab } from '$lib/store/workspace.svelte';
@@ -10,12 +10,11 @@
 	import { registerCompletion } from 'monacopilot';
 	import { join } from '@tauri-apps/api/path';
 	import { watch } from 'runed';
-	import { XIcon } from 'lucide-svelte';
+	import { ChevronsLeftRightIcon, XIcon } from 'lucide-svelte';
 	import { configStore } from '$lib/store/config.svelte';
 	import { editorStore } from '$lib/store/editor.svelte';
 	import pDebounce from 'p-debounce';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { page } from '$app/state';
 	import { Menu } from '@tauri-apps/api/menu';
 
 	const {
@@ -97,10 +96,19 @@
 					? configStore.config.editor.dark_theme
 					: configStore.config.editor.light_theme
 		});
-		editor.onDidFocusEditorWidget(focusHandler);
-		editor.onDidFocusEditorText(focusHandler);
+		editor.onDidFocusEditorWidget(() => focusHandler());
+		editor.onDidFocusEditorText(() => focusHandler());
 		editor.onDidChangeModelContent(changeContentHandler);
 		editor.onDidChangeCursorPosition(cursorChangeHandler);
+
+		// If this tab should be focused, handle it after editor is ready
+		if (tab.id === workspaceStore.currentTabId) {
+			requestAnimationFrame(() => {
+				if (editor && editor.hasTextFocus() === false) {
+					editor.focus();
+				}
+			});
+		}
 		editor.addAction({
 			id: 'tab-next',
 			label: 'Tab Next',
@@ -143,41 +151,11 @@
 			}
 		});
 		editor.addAction({
-			id: 'command-menu',
-			label: 'Command Menu',
-			keybindings: [editorStore.monaco.KeyMod.CtrlCmd | editorStore.monaco.KeyCode.KeyK],
-			async run() {
-				return appStore.toggleCommandMenu();
-			}
-		});
-		editor.addAction({
-			id: 'overview',
-			label: 'Overview',
-			keybindings: [editorStore.monaco.KeyMod.CtrlCmd | editorStore.monaco.KeyCode.KeyL],
-			async run() {
-				workspaceStore.toggleExplorer();
-				if (workspaceStore.explorerVisible) return;
-				return focusHandler();
-			}
-		});
-		editor.addAction({
 			id: 'close-tab',
 			label: 'Close Tab',
 			keybindings: [editorStore.monaco.KeyMod.CtrlCmd | editorStore.monaco.KeyCode.KeyW],
 			async run() {
 				return workspaceStore.removeTab({ tabId: tab.id });
-			}
-		});
-		editor.addAction({
-			id: 'toggle-chat',
-			label: 'Toggle Chat',
-			keybindings: [editorStore.monaco.KeyMod.CtrlCmd | editorStore.monaco.KeyCode.KeyI],
-			async run() {
-				workspaceStore.toggleChat();
-				if (workspaceStore.chatVisible) {
-					return emit('focus-chat');
-				}
-				return focusHandler();
 			}
 		});
 	}
@@ -196,10 +174,11 @@
 			model = editorStore.monaco.editor.createModel(content, language, uri);
 		}
 		editor.setModel(model);
-		const cursorPosition = page.url.searchParams.get('position');
-		if (cursorPosition) {
-			const positionObject = JSON.parse(cursorPosition);
-			position = new editorStore.monaco.Position(positionObject.lineNumber, positionObject.column);
+		if (tab.initialPosition) {
+			position = new editorStore.monaco.Position(
+				tab.initialPosition.lineNumber,
+				tab.initialPosition.column
+			);
 			editor.setPosition(position);
 			editor.revealLine(position.lineNumber);
 		}
@@ -252,11 +231,18 @@
 	watch(
 		() => workspaceStore.currentTabId,
 		(tabId) => {
-			if (!editor) return;
 			if (!tabId) return;
 			if (tabId !== tab.id) return;
-			emit('scroll-to-tab', { tabId });
-			editor.focus();
+
+			// Only proceed if editor is ready and mounted
+			if (!editor || !editorElement) return;
+
+			// Use requestAnimationFrame to ensure DOM is ready
+			requestAnimationFrame(() => {
+				if (editor && editor.hasTextFocus() === false) {
+					editor.focus();
+				}
+			});
 		}
 	);
 
@@ -269,8 +255,17 @@
 		}
 	);
 
-	function focusHandler() {
-		workspaceStore.setCurrentTabId(tab.id);
+	function focusHandler(shouldScroll: boolean = true) {
+		// Only set current tab if it's not already current
+		if (workspaceStore.currentTabId !== tab.id) {
+			workspaceStore.setCurrentTabId(tab.id, shouldScroll);
+		}
+		// Ensure editor focus if it's not already focused
+		if (editor && editor.hasTextFocus() === false) {
+			requestAnimationFrame(() => {
+				editor?.focus();
+			});
+		}
 	}
 
 	async function init() {
@@ -360,14 +355,24 @@
 		init().then((disposeFn) => {
 			disposeEditor = disposeFn;
 			unregisterEventListenersFn = registerEventListeners();
-			console.log('mnt', tab, workspaceStore.currentTabId);
-			if (tab.id === workspaceStore.currentTabId) {
-				focusHandler();
-				emit('scroll-to-tab', { tabId: tab.id });
-			}
+
+			// Use multiple ticks and requestAnimationFrame to ensure everything is ready
+			tick().then(() => {
+				requestAnimationFrame(() => {
+					// Only handle focus if this tab is currently active
+					if (tab.id === workspaceStore.currentTabId && editor) {
+						focusHandler(false); // Don't scroll when mounting from virtualizer
+						// Ensure focus after scroll
+						requestAnimationFrame(() => {
+							if (editor && editor.hasTextFocus() === false) {
+								editor.focus();
+							}
+						});
+					}
+				});
+			});
 		});
 		return () => {
-			// Clear any pending save timeout
 			if (saveTimeout) {
 				clearTimeout(saveTimeout);
 			}
@@ -381,8 +386,9 @@
 
 <div
 	class={clsx(
-		'flex flex-col flex-1 overflow-hidden border-r-2 border-base-300',
-		isFocused ? 'bg-primary' : 'bg-base-300 dark:bg-base-100'
+		'flex flex-col flex-1 overflow-hidden',
+		isFocused ? 'bg-primary' : 'bg-base-300 dark:bg-base-100',
+		!isLastTab && 'border-r-2 border-base-300'
 	)}
 >
 	<div
@@ -391,7 +397,10 @@
 		role="tab"
 		tabindex={0}
 	>
-		<div class="flex gap-1 items-center px-2">
+		<button
+			class="btn btn-ghost btn-xs flex flex-1 justify-start gap-1 items-center px-2 font-[Geist_Mono] border-none rounded-none font-medium hover:bg-primary"
+			onclick={() => workspaceStore.setCurrentTabId(tab.id, true)}
+		>
 			{#if tab.external}
 				<div
 					class={clsx(
@@ -402,11 +411,18 @@
 					EXTERNAL
 				</div>
 			{/if}
-			<div class="text-sm">{tab.filePath}</div>
-		</div>
+			<div class="text-xs">{tab.filePath}</div>
+		</button>
 		<button
 			type="button"
-			class="btn btn-square btn-ghost btn-xs"
+			class="btn btn-square btn-ghost btn-xs border-none rounded-none"
+			onclick={() => workspaceStore.toggleTabSize(tab.id)}
+		>
+			<ChevronsLeftRightIcon size={16} />
+		</button>
+		<button
+			type="button"
+			class="btn btn-square btn-ghost btn-xs border-none rounded-none"
 			onclick={() => workspaceStore.removeTab({ tabId: tab.id })}
 		>
 			<XIcon size={16} />
